@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from .company import Company
     from .salary_structure import SalaryStructure
     from .monthly_payroll import MonthlyPayroll
+    from .leave_balance import LeaveBalance
 
 
 class Gender(enum.Enum):
@@ -81,6 +82,11 @@ class Employee(BaseModel):
     )
     monthly_payrolls: Mapped[list["MonthlyPayroll"]] = relationship(
         "MonthlyPayroll",
+        back_populates="employee",
+        cascade="all, delete-orphan",
+    )
+    leave_balances: Mapped[list["LeaveBalance"]] = relationship(
+        "LeaveBalance",
         back_populates="employee",
         cascade="all, delete-orphan",
     )

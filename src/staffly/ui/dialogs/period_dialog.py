@@ -59,10 +59,22 @@ class PeriodDialog(QDialog):
         self.combo_month.setMinimumWidth(150)
 
         self.combo_year = QComboBox()
-        current_year = date.today().year
-        years = [str(y) for y in range(current_year - 2, current_year + 5)]
+        self.combo_year.setEditable(True)
+        self.combo_year.setInsertPolicy(QComboBox.NoInsert)
+        years = [str(y) for y in range(2000, 2101)]
         self.combo_year.addItems(years)
-        self.combo_year.setMinimumWidth(100)
+        self.combo_year.setMinimumWidth(120)
+
+        self.combo_month.setEditable(True)
+        self.combo_month.setInsertPolicy(QComboBox.NoInsert)
+        self.combo_month.lineEdit().setPlaceholderText("Month...")
+        self.combo_year.lineEdit().setPlaceholderText("Year...")
+
+        # Filter as user types
+        month_completer = self.combo_month.lineEdit()
+        month_completer.textEdited.connect(lambda t, c=self.combo_month: self._filter_combo(c, t, self.MONTHS))
+        year_completer = self.combo_year.lineEdit()
+        year_completer.textEdited.connect(lambda t, c=self.combo_year: self._filter_combo(c, t, years))
 
         self.combo_month.currentIndexChanged.connect(self._update_working_days_preview)
         self.combo_year.currentIndexChanged.connect(self._update_working_days_preview)
@@ -92,38 +104,17 @@ class PeriodDialog(QDialog):
             )
         layout.addWidget(info_label)
 
-        # Buttons
+        # Buttons - styled via global QSS
         btn_layout = QHBoxLayout()
 
-        btn_style = """
-            QPushButton {
-                font-size: 13px;
-                font-weight: bold;
-                border-radius: 4px;
-                border: 2px solid transparent;
-            }
-            QPushButton:hover {
-                border: 2px solid #333;
-            }
-            QPushButton:pressed {
-                border: 2px solid #000;
-            }
-        """
-
         self.btn_create = QPushButton("📅 Create Period")
+        self.btn_create.setObjectName("successButton")
         self.btn_create.setFixedSize(150, 50)
-        self.btn_create.setStyleSheet(btn_style + """
-            QPushButton { background-color: #4CAF50; color: white; }
-            QPushButton:hover { background-color: #45a049; }
-        """)
         self.btn_create.clicked.connect(self._on_create)
 
         self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.setObjectName("secondaryButton")
         self.btn_cancel.setFixedSize(150, 50)
-        self.btn_cancel.setStyleSheet(btn_style + """
-            QPushButton { background-color: #9e9e9e; color: white; }
-            QPushButton:hover { background-color: #757575; }
-        """)
         self.btn_cancel.clicked.connect(self.reject)
 
         btn_layout.addStretch()
@@ -131,6 +122,18 @@ class PeriodDialog(QDialog):
         btn_layout.addWidget(self.btn_cancel)
 
         layout.addLayout(btn_layout)
+
+    def _filter_combo(self, combo: "QComboBox", text: str, all_items: list):
+        """Filter combo box items as user types, preserving typed text."""
+        combo.blockSignals(True)
+        combo.clear()
+        filtered = [item for item in all_items if text.lower() in item.lower()]
+        combo.addItems(filtered)
+        combo.lineEdit().setText(text)
+        combo.lineEdit().setCursorPosition(len(text))
+        if filtered:
+            combo.showPopup()
+        combo.blockSignals(False)
 
     def _set_defaults(self):
         """Set default values based on existing periods."""

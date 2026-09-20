@@ -1,15 +1,39 @@
-"""Theme management for Staffly application."""
+"""
+Theme management for Staffly application.
+Supports Catppuccin Mocha (dark) and Catppuccin Latte (light) themes.
+
+Usage:
+    from staffly.ui.theme import load_theme, get_current_theme, ThemeMode
+    
+    # Load a theme (applies globally)
+    load_theme("mocha")  # Dark theme
+    load_theme("latte")  # Light theme
+    
+    # Get current theme info
+    mode = get_current_theme()  # Returns "mocha" or "latte"
+"""
 
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+from typing import Optional
+import sys
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QSettings
 
 
+def _get_base_dir() -> Path:
+    """Return base resource directory, handling both source and PyInstaller bundle."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / "staffly" / "ui" / "resources"
+    return Path(__file__).parent / "resources"
+
+
 class ThemeMode(Enum):
     """Available theme modes."""
-    LIGHT = "light"
-    DARK = "dark"
+    MOCHA = "mocha"   # Dark theme
+    LATTE = "latte"   # Light theme
 
 
 @dataclass
@@ -17,52 +41,86 @@ class ThemeColors:
     """Color definitions for a theme."""
     # Base colors
     background: str
-    text: str
+    surface: str
+    surface_alt: str
+    text_primary: str
+    text_secondary: str
     border: str
+    overlay: str
     
-    # Table specific
-    table_header: str
+    # Accent colors
+    primary: str
+    primary_hover: str
+    
+    # Status colors
+    success: str
+    danger: str
+    warning: str
+    info: str
+    selection: str
     selection_text: str
-    
 
-# Define theme color palettes
-DARK_THEME = ThemeColors(
-    background="#1d1d26",
-    text="#aeb3d4",
-    border="#3a3a41",
-    table_header="#1f1f29",
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CATPPUCCIN COLOR PALETTES
+# ═══════════════════════════════════════════════════════════════════════════
+
+CATPPUCCIN_MOCHA = ThemeColors(
+    background="#1e1e2e",
+    surface="#181825",
+    surface_alt="#313244",
+    text_primary="#cdd6f4",
+    text_secondary="#a6adc8",
+    border="#45475a",
+    overlay="#6c7086",
+    primary="#cba6f7",
+    primary_hover="#b48cf2",
+    success="#a6e3a1",
+    danger="#f38ba8",
+    warning="#f9e2af",
+    info="#89b4fa",
+    selection="#89b4fa",
+    selection_text="#1e1e2e",
+)
+
+CATPPUCCIN_LATTE = ThemeColors(
+    background="#eff1f5",
+    surface="#e6e9ef",
+    surface_alt="#dce0e8",
+    text_primary="#4c4f69",
+    text_secondary="#6c6f85",
+    border="#bcc0cc",
+    overlay="#9ca0b0",
+    primary="#8839ef",
+    primary_hover="#9b5df0",
+    success="#40a02b",
+    danger="#d20f39",
+    warning="#df8e1d",
+    info="#1e66f5",
+    selection="#1e66f5",
     selection_text="#ffffff",
 )
 
-LIGHT_THEME = ThemeColors(
-    background="#f4f5f9",
-    text="#191918",
-    border="#d8dfe7",
-    table_header="#e8eaef",
-    selection_text="#191918",
-)
 
+# ═══════════════════════════════════════════════════════════════════════════
+# THEME MANAGER
+# ═══════════════════════════════════════════════════════════════════════════
 
 class ThemeManager:
     """
-    Manages application theming and scaling.
+    Singleton class to manage application theming.
     
-    Usage:
-        theme = ThemeManager()
-        theme.apply_theme(ThemeMode.DARK)
-        theme.set_scale(1.0)  # 100%
-        
-        # Get current colors
-        colors = theme.colors
+    Loads QSS files and applies them globally via QApplication.setStyleSheet().
     """
     
-    _instance = None
+    _instance: Optional["ThemeManager"] = None
+    _current_mode: ThemeMode = ThemeMode.MOCHA
+    _settings: QSettings
+    _initialized: bool = False
     
-    def __new__(cls):
-        """Singleton pattern."""
+    def __new__(cls) -> "ThemeManager":
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
         return cls._instance
     
     def __init__(self):
@@ -70,26 +128,19 @@ class ThemeManager:
             return
         self._initialized = True
         self._settings = QSettings("Staffly", "Staffly")
-        self._current_mode = self._load_saved_theme()
-        self._colors = LIGHT_THEME if self._current_mode == ThemeMode.LIGHT else DARK_THEME
-        self._scale_factor = self._load_saved_scale()
+        self._load_saved_theme()
     
-    def _load_saved_theme(self) -> ThemeMode:
-        """Load saved theme preference."""
-        saved = self._settings.value("theme/mode", "dark")
-        return ThemeMode.LIGHT if saved == "light" else ThemeMode.DARK
+    def _load_saved_theme(self) -> None:
+        """Load saved theme preference from settings."""
+        saved = self._settings.value("theme/mode", "mocha")
+        if saved == "latte":
+            self._current_mode = ThemeMode.LATTE
+        else:
+            self._current_mode = ThemeMode.MOCHA
     
-    def _save_theme(self, mode: ThemeMode):
-        """Save theme preference."""
-        self._settings.setValue("theme/mode", mode.value)
-    
-    def _load_saved_scale(self) -> float:
-        """Load saved scale factor."""
-        return self._settings.value("ui_scale_factor", 1.0, type=float)
-    
-    def _save_scale(self, scale: float):
-        """Save scale factor."""
-        self._settings.setValue("ui_scale_factor", scale)
+    def _save_theme(self) -> None:
+        """Save current theme preference to settings."""
+        self._settings.setValue("theme/mode", self._current_mode.value)
         self._settings.sync()
     
     @property
@@ -100,523 +151,155 @@ class ThemeManager:
     @property
     def colors(self) -> ThemeColors:
         """Get current theme colors."""
-        return self._colors
+        if self._current_mode == ThemeMode.LATTE:
+            return CATPPUCCIN_LATTE
+        return CATPPUCCIN_MOCHA
     
     @property
     def is_dark(self) -> bool:
-        """Check if dark mode is active."""
-        return self._current_mode == ThemeMode.DARK
+        """Check if dark theme is active."""
+        return self._current_mode == ThemeMode.MOCHA
     
-    @property
-    def scale_factor(self) -> float:
-        """Get current scale factor."""
-        return self._scale_factor
+    def _get_styles_dir(self) -> Path:
+        """Get the path to the styles directory."""
+        return _get_base_dir() / "styles"
     
-    def set_scale(self, scale: float):
-        """Set UI scale factor and apply immediately."""
-        self._scale_factor = scale
-        self._save_scale(scale)
-        self._apply_current_settings()
+    def _get_icons_dir(self) -> Path:
+        """Get the path to the icons directory."""
+        return _get_base_dir() / "icons"
     
-    def toggle_theme(self):
-        """Toggle between light and dark mode."""
-        new_mode = ThemeMode.LIGHT if self._current_mode == ThemeMode.DARK else ThemeMode.DARK
-        self.apply_theme(new_mode)
+    def _load_qss_file(self, theme_name: str) -> str:
+        """Load QSS file content for the given theme."""
+        qss_file = self._get_styles_dir() / f"catppuccin_{theme_name}.qss"
+        
+        if not qss_file.exists():
+            print(f"Warning: Theme file not found: {qss_file}")
+            return ""
+        
+        with open(qss_file, "r", encoding="utf-8") as f:
+            return f.read()
     
-    def apply_theme(self, mode: ThemeMode):
-        """Apply a theme to the application."""
+    def _process_stylesheet(self, qss: str) -> str:
+        """Process stylesheet and replace icon path placeholders."""
+        icons_dir = self._get_icons_dir()
+        
+        # Replace icon placeholders with actual paths
+        # For mocha (dark theme), use light colored chevron
+        # For latte (light theme), use dark colored chevron
+        if self._current_mode == ThemeMode.MOCHA:
+            chevron_path = (icons_dir / "chevron-down.svg").as_posix()
+        else:
+            chevron_path = (icons_dir / "chevron-down-dark.svg").as_posix()
+        
+        qss = qss.replace("url(chevron-down.svg)", f'url("{chevron_path}")')
+        qss = qss.replace("url(chevron-down-dark.svg)", f'url("{chevron_path}")')
+        
+        return qss
+    
+    def apply_theme(self, mode: ThemeMode) -> None:
+        """
+        Apply a theme to the entire application.
+        
+        Args:
+            mode: ThemeMode.MOCHA or ThemeMode.LATTE
+        """
         self._current_mode = mode
-        self._colors = LIGHT_THEME if mode == ThemeMode.LIGHT else DARK_THEME
-        self._save_theme(mode)
-        self._apply_current_settings()
-    
-    def _apply_current_settings(self):
-        """Apply current theme and scale to the application."""
+        self._save_theme()
+        
+        # Load and process the QSS file
+        qss = self._load_qss_file(mode.value)
+        qss = self._process_stylesheet(qss)
+        
+        # Apply globally to the application
         app = QApplication.instance()
         if app:
-            app.setStyleSheet(self.get_stylesheet())
+            app.setStyleSheet(qss)
     
-    def _scaled(self, value: int) -> int:
-        """Scale a pixel value by the current scale factor."""
-        return int(value * self._scale_factor)
+    def toggle_theme(self) -> None:
+        """Toggle between dark (mocha) and light (latte) themes."""
+        if self._current_mode == ThemeMode.MOCHA:
+            self.apply_theme(ThemeMode.LATTE)
+        else:
+            self.apply_theme(ThemeMode.MOCHA)
     
     def get_stylesheet(self) -> str:
-        """Generate the global stylesheet for current theme with scaling."""
-        c = self._colors
-        s = self._scaled  # Shorthand for scaling
-        
-        return f"""
-            /* ═══════════════════════════════════════════════════════════════
-               GLOBAL BASE STYLES
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QWidget {{
-                background-color: {c.background};
-                color: {c.text};
-                font-size: {s(14)}px;
-            }}
-            
-            QMainWindow {{
-                background-color: {c.background};
-            }}
-            
-            /* ═══════════════════════════════════════════════════════════════
-               TABS
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QTabWidget::pane {{
-                border: 1px solid {c.border};
-                background-color: {c.background};
-            }}
-            
-            QTabBar::tab {{
-                background-color: {c.background};
-                color: {c.text};
-                border: 1px solid {c.border};
-                padding: {s(10)}px {s(20)}px;
-                font-size: {s(14)}px;
-                font-weight: bold;
-            }}
-            
-            QTabBar::tab:selected {{
-                background-color: {c.border};
-            }}
-            
-            QTabBar::tab:hover:!selected {{
-                background-color: {c.border};
-            }}
-            
-            /* ═══════════════════════════════════════════════════════════════
-               INPUTS
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QLineEdit, QTextEdit, QPlainTextEdit {{
-                background-color: {c.background};
-                color: {c.text};
-                border: 1px solid {c.border};
-                border-radius: {s(4)}px;
-                padding: {s(6)}px;
-                font-size: {s(14)}px;
-                min-height: {s(30)}px;
-            }}
-            
-            QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {{
-                border: 2px solid {c.border};
-            }}
-            
-            QComboBox {{
-                background-color: {c.background};
-                color: {c.text};
-                border: 1px solid {c.border};
-                border-radius: {s(4)}px;
-                padding: {s(6)}px {s(10)}px;
-                padding-right: {s(35)}px;
-                font-size: {s(14)}px;
-                min-height: {s(30)}px;
-            }}
-            
-            QComboBox::drop-down {{
-                subcontrol-origin: border;
-                subcontrol-position: center right;
-                width: {s(30)}px;
-                border-left: 1px solid {c.border};
-                background-color: {c.border};
-                border-top-right-radius: {s(4)}px;
-                border-bottom-right-radius: {s(4)}px;
-            }}
-            
-            QComboBox::drop-down:hover {{
-                background-color: {c.text};
-            }}
-            
-            QComboBox::down-arrow {{
-                image: url(none);
-                border: none;
-            }}
-            
-            QComboBox QAbstractItemView {{
-                background-color: {c.background};
-                color: {c.text};
-                border: 1px solid {c.border};
-                selection-background-color: {c.border};
-            }}
-            
-            QSpinBox, QDoubleSpinBox {{
-                background-color: {c.background};
-                color: {c.text};
-                border: 1px solid {c.border};
-                border-radius: {s(4)}px;
-                padding: {s(6)}px;
-                font-size: {s(14)}px;
-                min-height: {s(30)}px;
-            }}
-            
-            QDateEdit {{
-                background-color: {c.background};
-                color: {c.text};
-                border: 1px solid {c.border};
-                border-radius: {s(4)}px;
-                padding: {s(6)}px;
-                padding-right: {s(30)}px;
-                font-size: {s(14)}px;
-                min-height: {s(30)}px;
-            }}
-            
-            QDateEdit::drop-down {{
-                subcontrol-origin: border;
-                subcontrol-position: center right;
-                width: {s(30)}px;
-                border-left: 1px solid {c.border};
-                background-color: {c.border};
-                border-top-right-radius: {s(4)}px;
-                border-bottom-right-radius: {s(4)}px;
-            }}
-            
-            QDateEdit::drop-down:hover {{
-                background-color: {c.text};
-            }}
-            
-            QDateEdit::down-arrow {{
-                image: none;
-                width: 0;
-                height: 0;
-                border-left: {s(6)}px solid transparent;
-                border-right: {s(6)}px solid transparent;
-                border-top: {s(8)}px solid {c.background};
-                margin: 0;
-            }}
-            
-            QDateEdit QAbstractItemView {{
-                background-color: {c.background};
-                color: {c.text};
-                selection-background-color: {c.border};
-            }}
-            
-            /* ═══════════════════════════════════════════════════════════════
-               TABLES
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QTableWidget, QTableView {{
-                background-color: {c.background};
-                alternate-background-color: {c.background};
-                color: {c.text};
-                border: 1px solid {c.border};
-                gridline-color: {c.border};
-                font-size: {s(14)}px;
-                outline: none;
-                selection-background-color: {c.border};
-                selection-color: {c.selection_text};
-            }}
-            
-            QTableWidget::item, QTableView::item {{
-                background-color: {c.background};
-                padding: {s(8)}px;
-                border: none;
-                outline: none;
-            }}
-            
-            QTableWidget::item:selected, QTableView::item:selected {{
-                background-color: {c.border};
-                color: {c.selection_text};
-                border: none;
-                outline: none;
-            }}
-            
-            QTableWidget::item:focus, QTableView::item:focus {{
-                border: none;
-                outline: none;
-            }}
-            
-            QTableWidget:focus, QTableView:focus {{
-                border: 2px solid {c.border};
-                outline: none;
-            }}
-            
-            QHeaderView {{
-                background-color: {c.table_header};
-            }}
-            
-            QHeaderView::section {{
-                background-color: {c.table_header};
-                color: {c.text};
-                border: none;
-                border-bottom: 1px solid {c.border};
-                border-right: 1px solid {c.border};
-                padding: {s(8)}px;
-                font-size: {s(14)}px;
-                font-weight: bold;
-            }}
-            
-            QHeaderView::section:horizontal {{
-                background-color: {c.table_header};
-            }}
-            
-            QHeaderView::section:vertical {{
-                background-color: {c.table_header};
-            }}
-            
-            /* ═══════════════════════════════════════════════════════════════
-               GROUP BOXES
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QGroupBox {{
-                background-color: {c.background};
-                border: 1px solid {c.border};
-                border-radius: {s(4)}px;
-                margin-top: {s(12)}px;
-                padding-top: {s(10)}px;
-                font-size: {s(14)}px;
-                font-weight: bold;
-            }}
-            
-            QGroupBox::title {{
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                left: {s(10)}px;
-                padding: 0 {s(5)}px;
-                color: {c.text};
-            }}
-            
-            /* ═══════════════════════════════════════════════════════════════
-               LABELS
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QLabel {{
-                font-size: {s(14)}px;
-                background-color: transparent;
-            }}
-            
-            /* ═══════════════════════════════════════════════════════════════
-               CHECKBOXES
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QCheckBox {{
-                font-size: {s(14)}px;
-                spacing: {s(8)}px;
-            }}
-            
-            QCheckBox::indicator {{
-                width: {s(20)}px;
-                height: {s(20)}px;
-                border: 2px solid {c.border};
-                border-radius: {s(4)}px;
-                background-color: {c.background};
-            }}
-            
-            QCheckBox::indicator:hover {{
-                border: 2px solid {c.text};
-            }}
-            
-            QCheckBox::indicator:checked {{
-                background-color: #4CAF50;
-                border: 2px solid #4CAF50;
-            }}
-            
-            QCheckBox::indicator:checked:hover {{
-                background-color: #45a049;
-                border: 2px solid #45a049;
-            }}
-            
-            /* ═══════════════════════════════════════════════════════════════
-               SCROLLBARS
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QScrollBar:vertical {{
-                background-color: {c.background};
-                width: {s(12)}px;
-                border: none;
-            }}
-            
-            QScrollBar::handle:vertical {{
-                background-color: {c.border};
-                border-radius: {s(4)}px;
-                min-height: {s(30)}px;
-                margin: 2px;
-            }}
-            
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-                height: 0px;
-            }}
-            
-            QScrollBar:horizontal {{
-                background-color: {c.background};
-                height: {s(12)}px;
-                border: none;
-            }}
-            
-            QScrollBar::handle:horizontal {{
-                background-color: {c.border};
-                border-radius: {s(4)}px;
-                min-width: {s(30)}px;
-                margin: 2px;
-            }}
-            
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
-                width: 0px;
-            }}
-            
-            /* ═══════════════════════════════════════════════════════════════
-               DIALOGS
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QDialog {{
-                background-color: {c.background};
-                color: {c.text};
-            }}
-            
-            /* ═══════════════════════════════════════════════════════════════
-               MESSAGE BOXES
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QMessageBox {{
-                background-color: {c.background};
-            }}
-            
-            QMessageBox QLabel {{
-                color: {c.text};
-            }}
-            
-            /* ═══════════════════════════════════════════════════════════════
-               MENUS (Fixed size - not affected by scaling)
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QMenuBar {{
-                background-color: {c.background};
-                color: {c.text};
-                border-bottom: 1px solid {c.border};
-                font-size: 15px;
-            }}
-            
-            QMenuBar::item {{
-                padding: 7px 13px;
-            }}
-            
-            QMenuBar::item:selected {{
-                background-color: {c.border};
-            }}
-            
-            QMenu {{
-                background-color: {c.background};
-                color: {c.text};
-                border: 1px solid {c.border};
-                font-size: 15px;
-            }}
-            
-            QMenu::item {{
-                padding: 9px 28px;
-            }}
-            
-            QMenu::item:selected {{
-                background-color: {c.border};
-            }}
-            
-            /* ═══════════════════════════════════════════════════════════════
-               TOOLTIPS
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QToolTip {{
-                background-color: {c.background};
-                color: {c.text};
-                border: 1px solid {c.border};
-                padding: {s(4)}px;
-                font-size: {s(13)}px;
-            }}
-            
-            /* ═══════════════════════════════════════════════════════════════
-               STATUS BAR
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QStatusBar {{
-                background-color: {c.background};
-                color: {c.text};
-                border-top: 1px solid {c.border};
-                font-size: {s(13)}px;
-            }}
-            
-            /* ═══════════════════════════════════════════════════════════════
-               CALENDAR WIDGET
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QCalendarWidget {{
-                background-color: {c.background};
-                min-width: {s(350)}px;
-                min-height: {s(300)}px;
-            }}
-            
-            QCalendarWidget QTableView {{
-                background-color: {c.background};
-                selection-background-color: {c.border};
-                font-size: {s(14)}px;
-                min-width: {s(320)}px;
-            }}
-            
-            QCalendarWidget QTableView::item {{
-                padding: {s(8)}px;
-                min-width: {s(40)}px;
-                min-height: {s(30)}px;
-            }}
-            
-            QCalendarWidget QWidget#qt_calendar_navigationbar {{
-                background-color: {c.background};
-                min-height: {s(40)}px;
-            }}
-            
-            QCalendarWidget QToolButton {{
-                color: {c.text};
-                background-color: {c.background};
-                border: 1px solid {c.border};
-                border-radius: {s(4)}px;
-                padding: {s(6)}px {s(10)}px;
-                font-size: {s(14)}px;
-                min-width: {s(30)}px;
-            }}
-            
-            QCalendarWidget QToolButton:hover {{
-                background-color: {c.border};
-            }}
-            
-            QCalendarWidget QSpinBox {{
-                background-color: {c.background};
-                color: {c.text};
-                border: 1px solid {c.border};
-                font-size: {s(14)}px;
-                min-width: {s(60)}px;
-            }}
-            
-            QCalendarWidget QMenu {{
-                background-color: {c.background};
-                color: {c.text};
-            }}
-            
-            QCalendarWidget #qt_calendar_monthbutton {{
-                min-width: {s(100)}px;
-            }}
-            
-            QCalendarWidget #qt_calendar_yearbutton {{
-                min-width: {s(60)}px;
-            }}
-            
-            /* ═══════════════════════════════════════════════════════════════
-               BUTTONS (Generic)
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QPushButton {{
-                font-size: {s(13)}px;
-                padding: {s(8)}px {s(16)}px;
-                border-radius: {s(4)}px;
-            }}
-            
-            /* ═══════════════════════════════════════════════════════════════
-               INPUT DIALOG
-               ═══════════════════════════════════════════════════════════════ */
-            
-            QInputDialog {{
-                min-width: {s(300)}px;
-            }}
         """
+        Get the current theme stylesheet.
+        Useful for applying to specific widgets.
+        """
+        qss = self._load_qss_file(self._current_mode.value)
+        return self._process_stylesheet(qss)
 
 
-# Global theme manager instance
+# ═══════════════════════════════════════════════════════════════════════════
+# CONVENIENCE FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════
+
+_theme_manager: Optional[ThemeManager] = None
+
+
 def get_theme() -> ThemeManager:
-    """Get the global theme manager instance."""
-    return ThemeManager()
+    """
+    Get the global ThemeManager instance.
+    
+    Returns:
+        ThemeManager: The singleton theme manager instance.
+    """
+    global _theme_manager
+    if _theme_manager is None:
+        _theme_manager = ThemeManager()
+    return _theme_manager
+
+
+def load_theme(theme: str) -> None:
+    """
+    Load and apply a theme globally.
+    
+    Args:
+        theme: Theme name - "mocha" for dark, "latte" for light
+    
+    Example:
+        load_theme("mocha")  # Apply dark theme
+        load_theme("latte")  # Apply light theme
+    """
+    manager = get_theme()
+    
+    if theme.lower() == "latte":
+        manager.apply_theme(ThemeMode.LATTE)
+    else:
+        manager.apply_theme(ThemeMode.MOCHA)
+
+
+def get_current_theme() -> str:
+    """
+    Get the name of the currently active theme.
+    
+    Returns:
+        str: "mocha" or "latte"
+    """
+    return get_theme().mode.value
+
+
+def get_theme_colors() -> ThemeColors:
+    """
+    Get the color palette for the current theme.
+    
+    Returns:
+        ThemeColors: Current theme color definitions
+    """
+    return get_theme().colors
+
+
+def toggle_theme() -> None:
+    """Toggle between dark and light themes."""
+    get_theme().toggle_theme()
+
+
+def is_dark_theme() -> bool:
+    """
+    Check if the dark theme is currently active.
+    
+    Returns:
+        bool: True if dark (mocha) theme is active
+    """
+    return get_theme().is_dark

@@ -90,13 +90,22 @@ uv
 ## Setup
 
 ```bash
-# Clone repositorygit clone <repo-url>cd Staffly# Install dependencies using uvuv sync# Run applicationuv run python -m staffly.main
+# Clone repository
+git clone <repo-url>
+cd Staffly
+
+# Install dependencies using uv
+uv sync
+
+# Run application
+uv run python -m staffly.main
 ```
 
 ## Building Executable
 
 ```bash
-# Build .exe with PyInstalleruv run pyinstaller --onefile --windowed src/staffly/main.py --name Staffly
+# Build single-file .exe using existing spec
+uv run pyinstaller --noconfirm --clean Staffly.spec
 ```
 
 ## License

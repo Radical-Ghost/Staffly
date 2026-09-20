@@ -77,6 +77,11 @@ def main() -> int:
         app.setApplicationVersion("1.0.0")
         app.setOrganizationName("Staffly")
 
+        # Apply global theme before creating any windows
+        from staffly.ui.theme import load_theme, get_current_theme
+        current_theme = get_current_theme()  # Returns saved preference (mocha/latte)
+        load_theme(current_theme)
+
         # Load active companies (used by in-app splash selector)
         db = get_db()
         with db.get_session() as session:

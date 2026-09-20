@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QAbstractItemView,
     QGroupBox,
+    QSizePolicy,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QShortcut, QKeySequence
@@ -43,122 +44,79 @@ class SalaryWidget(QWidget):
         self._load_employees()
 
     def _setup_ui(self):
-        """Setup the UI components."""
+        """Setup the UI components - styled via global QSS theme."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(10, 8, 10, 10)
+        layout.setSpacing(16)
+        layout.setContentsMargins(16, 16, 16, 16)
 
         # ═══════════════════════════════════════════════════════════════════
-        # EMPLOYEE SELECTOR
+        # TOP BAR CARD: selector + buttons in a single card (like employee widget)
         # ═══════════════════════════════════════════════════════════════════
-        selector_group = QGroupBox("Select Employee")
-        selector_layout = QHBoxLayout(selector_group)
+        top_card = QWidget()
+        top_card.setObjectName("card")
+        top_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        top_card_layout = QHBoxLayout(top_card)
+        top_card_layout.setContentsMargins(20, 16, 20, 16)
+        top_card_layout.setSpacing(16)
 
-        selector_label = QLabel("Employee:")
+        selector_label = QLabel("Employee")
+
         self.employee_combo = QComboBox()
         self.employee_combo.setMinimumWidth(300)
         self.employee_combo.currentIndexChanged.connect(self._on_employee_changed)
 
-        scope_label = QLabel(f"Company: {self.selected_company_name}")
-        scope_label.setStyleSheet("font-weight: 600;")
+        scope_label = QLabel(f"{self.selected_company_name}")
+        scope_label.setObjectName("badge")
 
-        # Button style - 150x50
-        btn_style = """
-            QPushButton {
-                font-size: 13px;
-                font-weight: bold;
-                border-radius: 4px;
-                border: 2px solid transparent;
-            }
-            QPushButton:hover {
-                border: 2px solid #333;
-            }
-            QPushButton:pressed {
-                border: 2px solid #000;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-                color: #666666;
-                border: none;
-            }
-        """
-
-        self.btn_refresh = QPushButton("🔄 Refresh")
-        self.btn_refresh.setFixedSize(150, 50)
-        self.btn_refresh.setStyleSheet(btn_style + """
-            QPushButton { background-color: #607D8B; color: white; }
-            QPushButton:hover { background-color: #546E7A; }
-        """)
-        self.btn_refresh.clicked.connect(self._load_employees)
-
-        selector_layout.addWidget(selector_label)
-        selector_layout.addWidget(self.employee_combo)
-        selector_layout.addSpacing(12)
-        selector_layout.addWidget(scope_label)
-        selector_layout.addStretch()
-        selector_layout.addWidget(self.btn_refresh)
-
-        layout.addWidget(selector_group)
-
-        # ═══════════════════════════════════════════════════════════════════
-        # CURRENT SALARY INFO
-        # ═══════════════════════════════════════════════════════════════════
-        self.current_salary_group = QGroupBox("Current Salary Structure")
-        current_layout = QHBoxLayout(self.current_salary_group)
-
-        self.lbl_basic = QLabel("Basic: ₹0")
-        self.lbl_hra = QLabel("HRA: ₹0")
-        self.lbl_gross = QLabel("Gross: ₹0")
-        self.lbl_effective = QLabel("Effective From: -")
-
-        current_layout.addWidget(self.lbl_basic)
-        current_layout.addWidget(self.lbl_hra)
-        current_layout.addWidget(self.lbl_gross)
-        current_layout.addStretch()
-        current_layout.addWidget(self.lbl_effective)
-
-        layout.addWidget(self.current_salary_group)
-
-        # ═══════════════════════════════════════════════════════════════════
-        # BUTTONS
-        # ═══════════════════════════════════════════════════════════════════
-        btn_layout = QHBoxLayout()
-
-        self.btn_add = QPushButton("➕ Add New Structure")
-        self.btn_add.setFixedSize(150, 50)
-        self.btn_add.setStyleSheet(btn_style + """
-            QPushButton { background-color: #4CAF50; color: white; }
-            QPushButton:hover { background-color: #45a049; }
-        """)
+        self.btn_add = QPushButton("Add New Structure")
+        self.btn_add.setObjectName("primaryButton")
+        self.btn_add.setFixedHeight(40)
+        self.btn_add.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_add.clicked.connect(self._on_add)
         self.btn_add.setEnabled(False)
 
-        self.btn_edit = QPushButton("✏️ Edit Selected")
-        self.btn_edit.setFixedSize(150, 50)
-        self.btn_edit.setStyleSheet(btn_style + """
-            QPushButton { background-color: #2196F3; color: white; }
-            QPushButton:hover { background-color: #1976D2; }
-        """)
+        self.btn_edit = QPushButton("Edit Selected")
+        self.btn_edit.setObjectName("secondaryButton")
+        self.btn_edit.setFixedHeight(40)
+        self.btn_edit.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_edit.clicked.connect(self._on_edit)
         self.btn_edit.setEnabled(False)
 
-        btn_layout.addWidget(self.btn_add)
-        btn_layout.addWidget(self.btn_edit)
-        btn_layout.addStretch()
+        self.btn_refresh = QPushButton("Refresh")
+        self.btn_refresh.setObjectName("secondaryButton")
+        self.btn_refresh.setFixedHeight(40)
+        self.btn_refresh.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_refresh.clicked.connect(self._load_employees)
 
-        layout.addLayout(btn_layout)
+        top_card_layout.addWidget(selector_label)
+        top_card_layout.addWidget(self.employee_combo)
+        top_card_layout.addWidget(scope_label)
+        top_card_layout.addStretch()
+        top_card_layout.addWidget(self.btn_add)
+        top_card_layout.addWidget(self.btn_edit)
+        top_card_layout.addWidget(self.btn_refresh)
+
+        layout.addWidget(top_card)
 
         # ═══════════════════════════════════════════════════════════════════
-        # SALARY HISTORY TABLE
+        # SALARY HISTORY TABLE - styled via global QSS
         # ═══════════════════════════════════════════════════════════════════
-        history_group = QGroupBox("Salary Structure History")
-        history_layout = QVBoxLayout(history_group)
+        history_card = QWidget()
+        history_card.setObjectName("card")
+        history_layout = QVBoxLayout(history_card)
+        history_layout.setContentsMargins(0, 0, 0, 0)
+        history_layout.setSpacing(0)
+
+        # Header label
+        history_header = QLabel("Salary Structure History")
+        history_header.setObjectName("cardHeader")
+        history_layout.addWidget(history_header)
 
         self.table = QTableWidget()
         self.table.setObjectName("salaryTable")
         self.table.setColumnCount(10)
         self.table.setHorizontalHeaderLabels([
-            "ID", "Effective From", "Effective To", "Basic", "HRA", 
+            "ID", "Effective From", "Effective Till", "Basic", "HRA",
             "Bonus", "CCA", "Other", "PF (Employer)", "Gross"
         ])
 
@@ -168,25 +126,32 @@ class SalaryWidget(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setSortingEnabled(True)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table.verticalHeader().setDefaultSectionSize(35)
-
-        # Table styling
-        self._apply_table_zoom()
+        self.table.verticalHeader().setDefaultSectionSize(48)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setShowGrid(False)
 
         # Hide ID column
         self.table.setColumnHidden(0, True)
 
-        # Column widths
+        # Column widths (manual)
         header = self.table.horizontalHeader()
-        for i in range(self.table.columnCount()):
-            header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(QHeaderView.Fixed)
+        self.table.setColumnWidth(1, 200)   # Effective From
+        self.table.setColumnWidth(2, 200)   # Effective Till
+        self.table.setColumnWidth(3, 205)   # Basic
+        self.table.setColumnWidth(4, 205)   # HRA
+        self.table.setColumnWidth(5, 205)   # Bonus
+        self.table.setColumnWidth(6, 205)    # CCA
+        self.table.setColumnWidth(7, 205)    # Other
+        self.table.setColumnWidth(8, 205)   # PF (Employer)
+        header.setSectionResizeMode(9, QHeaderView.Stretch)  # Gross fills remaining space
 
         # Connect signals
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
         self.table.doubleClicked.connect(self._on_edit)
 
         history_layout.addWidget(self.table)
-        layout.addWidget(history_group)
+        layout.addWidget(history_card, 1)
 
     def _load_employees(self):
         """Load employees into combo box."""
@@ -213,7 +178,6 @@ class SalaryWidget(QWidget):
     def _load_salary_structures(self, employee_id: int | None):
         """Load salary structures for selected employee."""
         self.table.setRowCount(0)
-        self._clear_current_info()
 
         if not employee_id:
             return
@@ -248,21 +212,6 @@ class SalaryWidget(QWidget):
                         item = self.table.item(row, col)
                         if item:
                             item.setBackground(Qt.lightGray)
-
-                    # Update current info
-                    self.lbl_basic.setText(f"Basic: ₹{struct.basic_salary:,.2f}")
-                    self.lbl_hra.setText(f"HRA: ₹{struct.hra:,.2f}")
-                    self.lbl_gross.setText(f"Gross: ₹{struct.gross_salary:,.2f}")
-                    self.lbl_effective.setText(
-                        f"Effective From: {struct.effective_from.strftime('%d-%m-%Y')}"
-                    )
-
-    def _clear_current_info(self):
-        """Clear current salary info labels."""
-        self.lbl_basic.setText("Basic: ₹0")
-        self.lbl_hra.setText("HRA: ₹0")
-        self.lbl_gross.setText("Gross: ₹0")
-        self.lbl_effective.setText("Effective From: -")
 
     def _on_selection_changed(self):
         """Handle table selection change."""

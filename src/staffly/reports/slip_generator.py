@@ -43,6 +43,7 @@ class SalarySlipGenerator:
         output_path: Path,
         company_name: str = None,
         company_address: str = None,
+        leave_balance=None,
     ) -> Path:
         """
         Generate a salary slip PDF for a single employee.
@@ -64,6 +65,7 @@ class SalarySlipGenerator:
             output_path=Path(output_path),
             company_name=company_name,
             company_address=company_address,
+            leave_balance=leave_balance,
         )
     
     def generate_batch(
@@ -93,7 +95,8 @@ class SalarySlipGenerator:
             period = payroll.payroll_period
             employee = payroll.employee
             
-            filename = f"Salary_Slip_{employee.employee_code}_{period.period_label.replace(' ', '_')}.pdf"
+            emp_name = (employee.full_name or employee.employee_code).replace(' ', '_').replace('/', '-')
+            filename = f"Salary_Slip_{emp_name}_{period.period_label.replace(' ', '_')}.pdf"
             output_path = output_dir / filename
             
             self.generate_slip(payroll, output_path, company_name, company_address)

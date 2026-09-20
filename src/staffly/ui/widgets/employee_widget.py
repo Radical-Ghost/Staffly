@@ -45,110 +45,101 @@ class EmployeeWidget(QWidget):
         self._load_employees()
 
     def _setup_ui(self):
-        """Setup the UI components."""
+        """Setup the UI components - styled via global QSS theme."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(10, 8, 10, 10)
+        layout.setSpacing(16)
+        layout.setContentsMargins(16, 16, 16, 16)
 
         # ═══════════════════════════════════════════════════════════════════
-        # TOP BAR: Search + Filter + Buttons
+        # TOP BAR CARD: Search + Filter + Buttons in a card container
         # ═══════════════════════════════════════════════════════════════════
-        top_bar = QHBoxLayout()
-        top_bar.setSpacing(15)
+        top_card = QWidget()
+        top_card.setObjectName("card")
+        top_card_layout = QHBoxLayout(top_card)
+        top_card_layout.setContentsMargins(20, 16, 20, 16)
+        top_card_layout.setSpacing(16)
 
-        # Search
-        search_label = QLabel("🔍 Search:")
+        # Search with icon
+        search_container = QWidget()
+        search_layout = QHBoxLayout(search_container)
+        search_layout.setContentsMargins(0, 0, 0, 0)
+        search_layout.setSpacing(8)
+        
+        search_label = QLabel("Search")
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search by name or code...")
+        self.search_input.setPlaceholderText("Name or code...")
         self.search_input.setMinimumWidth(200)
         self.search_input.textChanged.connect(self._on_search)
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.search_input)
 
-        # Company scope label
-        company_label = QLabel(f"🏢 Company: {self.selected_company_name}")
+        # Company scope label (badge style)
+        company_label = QLabel(f"{self.selected_company_name}")
+        company_label.setObjectName("badge")
 
         # Status filter
-        filter_label = QLabel("📋 Status:")
+        filter_container = QWidget()
+        filter_layout = QHBoxLayout(filter_container)
+        filter_layout.setContentsMargins(0, 0, 0, 0)
+        filter_layout.setSpacing(8)
+        
+        filter_label = QLabel("Status")
         self.status_filter = QComboBox()
         self.status_filter.addItems(["All", "Active", "Inactive"])
         self.status_filter.setCurrentIndex(1)  # Default to Active
         self.status_filter.setMinimumWidth(100)
         self.status_filter.currentIndexChanged.connect(self._load_employees)
+        filter_layout.addWidget(filter_label)
+        filter_layout.addWidget(self.status_filter)
 
-        # Button style - 150x50 exact size
-        btn_style = """
-            QPushButton {
-                font-size: 13px;
-                font-weight: bold;
-                border-radius: 4px;
-                border: 2px solid transparent;
-            }
-            QPushButton:hover {
-                border: 2px solid #333;
-            }
-            QPushButton:pressed {
-                border: 2px solid #000;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-                color: #666666;
-                border: none;
-            }
-        """
-
-        # Buttons with fixed size 150x50
-        self.btn_add = QPushButton("➕ Add Employee")
-        self.btn_add.setFixedSize(150, 50)
-        self.btn_add.setStyleSheet(btn_style + """
-            QPushButton { background-color: #4CAF50; color: white; }
-            QPushButton:hover { background-color: #45a049; }
-        """)
+        # Buttons with modern styling - use objectNames for QSS
+        self.btn_add = QPushButton("Add Employee")
+        self.btn_add.setObjectName("primaryButton")
+        self.btn_add.setFixedHeight(40)
+        self.btn_add.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_add.clicked.connect(self._on_add)
 
-        self.btn_edit = QPushButton("✏️ Edit")
-        self.btn_edit.setFixedSize(150, 50)
-        self.btn_edit.setStyleSheet(btn_style + """
-            QPushButton { background-color: #2196F3; color: white; }
-            QPushButton:hover { background-color: #1976D2; }
-        """)
+        self.btn_edit = QPushButton("Edit")
+        self.btn_edit.setObjectName("secondaryButton")
+        self.btn_edit.setFixedHeight(40)
+        self.btn_edit.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_edit.clicked.connect(self._on_edit)
         self.btn_edit.setEnabled(False)
 
-        self.btn_delete = QPushButton("🗑️ Delete")
-        self.btn_delete.setFixedSize(150, 50)
-        self.btn_delete.setStyleSheet(btn_style + """
-            QPushButton { background-color: #f44336; color: white; }
-            QPushButton:hover { background-color: #d32f2f; }
-        """)
+        self.btn_delete = QPushButton("Delete")
+        self.btn_delete.setObjectName("dangerButton")
+        self.btn_delete.setFixedHeight(40)
+        self.btn_delete.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_delete.clicked.connect(self._on_delete)
         self.btn_delete.setEnabled(False)
 
-        self.btn_refresh = QPushButton("🔄 Refresh")
-        self.btn_refresh.setFixedSize(150, 50)
-        self.btn_refresh.setStyleSheet(btn_style + """
-            QPushButton { background-color: #607D8B; color: white; }
-            QPushButton:hover { background-color: #546E7A; }
-        """)
+        self.btn_refresh = QPushButton("Refresh")
+        self.btn_refresh.setObjectName("secondaryButton")
+        self.btn_refresh.setFixedHeight(40)
+        self.btn_refresh.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_refresh.clicked.connect(self._load_employees)
 
-        # Add to top bar
-        top_bar.addWidget(search_label)
-        top_bar.addWidget(self.search_input)
-        top_bar.addSpacing(15)
-        top_bar.addWidget(company_label)
-        top_bar.addSpacing(15)
-        top_bar.addWidget(filter_label)
-        top_bar.addWidget(self.status_filter)
-        top_bar.addStretch()
-        top_bar.addWidget(self.btn_add)
-        top_bar.addWidget(self.btn_edit)
-        top_bar.addWidget(self.btn_delete)
-        top_bar.addWidget(self.btn_refresh)
+        # Add to top card layout
+        top_card_layout.addWidget(search_container)
+        top_card_layout.addWidget(company_label)
+        top_card_layout.addWidget(filter_container)
+        top_card_layout.addStretch()
+        top_card_layout.addWidget(self.btn_add)
+        top_card_layout.addWidget(self.btn_edit)
+        top_card_layout.addWidget(self.btn_delete)
+        top_card_layout.addWidget(self.btn_refresh)
 
-        layout.addLayout(top_bar)
+        layout.addWidget(top_card)
 
         # ═══════════════════════════════════════════════════════════════════
-        # EMPLOYEE TABLE
+        # EMPLOYEE TABLE - styled via global QSS
         # ═══════════════════════════════════════════════════════════════════
+        table_card = QWidget()
+        table_card.setObjectName("card")
+        table_card_layout = QVBoxLayout(table_card)
+        table_card_layout.setContentsMargins(0, 0, 0, 0)
+        table_card_layout.setSpacing(0)
+        
         self.table = QTableWidget()
         self.table.setObjectName("employeeTable")
         self.table.setColumnCount(8)
@@ -156,31 +147,15 @@ class EmployeeWidget(QWidget):
             "ID", "Code", "Name", "Company", "Designation", "Department", "Joining Date", "Status"
         ])
 
-        # Table styling - scaled proportionally
-        self.table.setStyleSheet("""
-            QTableWidget {
-                font-size: 14px;
-                gridline-color: #ddd;
-            }
-            QTableWidget::item {
-                padding: 6px;
-            }
-            QHeaderView::section {
-                font-size: 14px;
-                font-weight: bold;
-                padding: 8px;
-                background-color: #f5f5f5;
-                border: 1px solid #ddd;
-            }
-        """)
-
         # Table settings
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setAlternatingRowColors(True)
         self.table.setSortingEnabled(True)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table.verticalHeader().setDefaultSectionSize(35)  # Row height
+        self.table.verticalHeader().setDefaultSectionSize(48)  # Increased row height
+        self.table.verticalHeader().setVisible(False)  # Hide row numbers for cleaner look
+        self.table.setShowGrid(False)  # Remove grid lines
 
         # Column widths
         header = self.table.horizontalHeader()
@@ -200,12 +175,14 @@ class EmployeeWidget(QWidget):
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
         self.table.doubleClicked.connect(self._on_edit)
 
-        layout.addWidget(self.table)
+        table_card_layout.addWidget(self.table)
+        layout.addWidget(table_card)
 
         # ═══════════════════════════════════════════════════════════════════
-        # BOTTOM STATUS
+        # BOTTOM STATUS - styled via global QSS
         # ═══════════════════════════════════════════════════════════════════
         self.status_label = QLabel("0 employees")
+        self.status_label.setObjectName("statusLabel")
         layout.addWidget(self.status_label)
 
     def _load_employees(self):
@@ -337,25 +314,41 @@ class EmployeeWidget(QWidget):
         self._apply_table_zoom()
 
     def _apply_table_zoom(self):
-        """Apply current zoom level to table."""
+        """Apply current zoom level to table with modern styling."""
         self.table.setStyleSheet(f"""
             QTableWidget {{
+                background-color: #FFFFFF;
+                alternate-background-color: #FAFAFA;
+                border: none;
+                border-radius: 8px;
+                gridline-color: transparent;
                 font-size: {self._table_font_size}px;
-                gridline-color: #ddd;
+                outline: none;
             }}
             QTableWidget::item {{
-                padding: 6px;
+                padding: 12px 16px;
+                border-bottom: 1px solid #F3F4F6;
+            }}
+            QTableWidget::item:hover {{
+                background-color: #F0F4FF;
+            }}
+            QTableWidget::item:selected {{
+                background-color: #EEF2FF;
+                color: #111827;
             }}
             QHeaderView::section {{
-                font-size: {self._table_font_size}px;
-                font-weight: bold;
-                padding: 8px;
-                background-color: #f5f5f5;
-                border: 1px solid #ddd;
+                background-color: #F9FAFB;
+                color: #6B7280;
+                font-size: {max(11, self._table_font_size - 2)}px;
+                font-weight: 600;
+                text-transform: uppercase;
+                padding: 12px 16px;
+                border: none;
+                border-bottom: 2px solid #E5E7EB;
             }}
         """)
         # Adjust row height based on font size
-        row_height = int(self._table_font_size * 2.5)
+        row_height = int(self._table_font_size * 3)
         self.table.verticalHeader().setDefaultSectionSize(row_height)
 
     def _on_add(self):

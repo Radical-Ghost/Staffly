@@ -65,11 +65,15 @@ class MonthlyPayroll(BaseModel):
     # Days for which salary is paid (Present + Paid Leaves)
     paid_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
-    # Absent days (unpaid)
-    absent_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Absent days (unpaid) - decimal for half-day support
+    absent_days: Mapped[Decimal] = mapped_column(
+        Numeric(4, 1), default=Decimal("0.0"), nullable=False
+    )
 
-    # Late marks (may affect salary as per policy)
-    late_marks: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Late marks (decimal) - beside absent
+    late_marks: Mapped[Decimal] = mapped_column(
+        Numeric(4, 1), default=Decimal("0.0"), nullable=False
+    )
 
     # Leave breakdown
     privilege_leave: Mapped[Decimal] = mapped_column(
@@ -178,6 +182,11 @@ class MonthlyPayroll(BaseModel):
 
     # Cost to Company for this month (Gross + Employer contributions)
     ctc_monthly: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0.00")
+    )
+
+    # Arrears (paid when salary structure changes mid-year)
+    arrears: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), nullable=False, default=Decimal("0.00")
     )
 

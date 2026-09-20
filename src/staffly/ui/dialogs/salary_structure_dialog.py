@@ -19,7 +19,7 @@ from PySide6.QtGui import QDoubleValidator
 
 from staffly.database import get_db
 from staffly.database.models import SalaryStructure
-from staffly.database.repositories import SalaryStructureRepository
+from staffly.database.repositories import SalaryStructureRepository, EmployeeRepository
 from staffly.ui.widgets.arrow_widgets import ArrowDateEdit, OptionalDateEdit
 from staffly.services.calculation_service import CalculationService
 
@@ -83,7 +83,7 @@ class SalaryStructureDialog(QDialog):
         dates_layout.addRow("Effective From*:", self.date_from)
 
         self.date_to = OptionalDateEdit(label="Current (No End Date)")
-        dates_layout.addRow("Effective To:", self.date_to)
+        dates_layout.addRow("Effective Till:", self.date_to)
 
         left_column.addWidget(dates_group)
 
@@ -94,31 +94,11 @@ class SalaryStructureDialog(QDialog):
         gross_input_layout = QHBoxLayout()
         self.txt_gross = QLineEdit("0.00")
         self.txt_gross.setValidator(money_validator)
-        self.txt_gross.setStyleSheet("""
-            QLineEdit {
-                font-size: 18px;
-                font-weight: bold;
-                padding: 8px;
-                border: 2px solid #4CAF50;
-                border-radius: 4px;
-                background-color: #E8F5E9;
-            }
-        """)
+        self.txt_gross.setObjectName("grossInput")
         
         self.btn_calculate = QPushButton("🧮 Calculate")
+        self.btn_calculate.setObjectName("successButton")
         self.btn_calculate.setFixedSize(100, 40)
-        self.btn_calculate.setStyleSheet("""
-            QPushButton {
-                font-size: 13px;
-                font-weight: bold;
-                background-color: #4CAF50;
-                color: white;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-        """)
         self.btn_calculate.clicked.connect(self._on_calculate_clicked)
         
         gross_input_layout.addWidget(self.txt_gross)
@@ -135,6 +115,11 @@ class SalaryStructureDialog(QDialog):
         self.chk_pf.setChecked(True)
         self.chk_pf.stateChanged.connect(self._on_pf_changed)
         stat_layout.addWidget(self.chk_pf)
+
+        self.chk_esi = QCheckBox("Employee State Insurance (ESIC)")
+        self.chk_esi.setChecked(True)
+        self.chk_esi.stateChanged.connect(self._on_pf_changed)
+        stat_layout.addWidget(self.chk_esi)
 
         # Note: ESI is auto-calculated based on gross salary (if Gross*50% < 21000)
         # Professional Tax is mandatory and calculated based on gender and gross
@@ -159,59 +144,42 @@ class SalaryStructureDialog(QDialog):
         salary_group = QGroupBox("📊 Salary Breakdown (Auto-Calculated)")
         salary_layout = QFormLayout(salary_group)
 
-        component_style = """
-            QLineEdit {
-                padding: 6px;
-                border: 1px solid #ccc;
-                border-radius: 3px;
-                background-color: #f5f5f5;
-                color: #333;
-                font-size: 14px;
-            }
-        """
-
         self.txt_basic = QLineEdit("0.00")
         self.txt_basic.setReadOnly(True)
-        self.txt_basic.setStyleSheet(component_style)
         salary_layout.addRow("Basic Salary:", self.txt_basic)
 
         self.txt_hra = QLineEdit("0.00")
         self.txt_hra.setReadOnly(True)
-        self.txt_hra.setStyleSheet(component_style)
         salary_layout.addRow("HRA:", self.txt_hra)
 
         self.txt_bonus = QLineEdit("0.00")
         self.txt_bonus.setReadOnly(True)
-        self.txt_bonus.setStyleSheet(component_style)
         salary_layout.addRow("Bonus:", self.txt_bonus)
 
         self.txt_cca = QLineEdit("0.00")
         self.txt_cca.setReadOnly(True)
-        self.txt_cca.setStyleSheet(component_style)
         salary_layout.addRow("CCA:", self.txt_cca)
 
         self.txt_other = QLineEdit("0.00")
         self.txt_other.setReadOnly(True)
-        self.txt_other.setStyleSheet(component_style)
         salary_layout.addRow("Other Allowance:", self.txt_other)
 
         # Separator
         separator = QLabel("─" * 30)
-        separator.setStyleSheet("color: #ccc;")
         salary_layout.addRow(separator)
 
         # PF & ESI info - with proper left alignment
         self.lbl_pf_info = QLabel("PF (Employer): ₹0.00")
-        self.lbl_pf_info.setStyleSheet("color: #666; font-size: 13px;")
+        self.lbl_pf_info.setObjectName("statusLabel")
         salary_layout.addRow("PF (Employer):", self.lbl_pf_info)
 
         self.lbl_esi_info = QLabel("₹0.00")
-        self.lbl_esi_info.setStyleSheet("color: #666; font-size: 13px;")
+        self.lbl_esi_info.setObjectName("statusLabel")
         salary_layout.addRow("ESIC (Employee):", self.lbl_esi_info)
 
         # Total (saved gross includes PF employer)
         self.lbl_calculated_gross = QLabel("₹0.00")
-        self.lbl_calculated_gross.setStyleSheet("font-weight: bold; font-size: 14px; color: #4CAF50;")
+        self.lbl_calculated_gross.setObjectName("statusLabelSuccess")
         salary_layout.addRow("Components Sum:", self.lbl_calculated_gross)
 
         right_column.addWidget(salary_group)
@@ -224,39 +192,18 @@ class SalaryStructureDialog(QDialog):
         main_layout.addLayout(columns_layout)
 
         # ═══════════════════════════════════════════════════════════════════
-        # BUTTONS
+        # BUTTONS - styled via global QSS
         # ═══════════════════════════════════════════════════════════════════
         btn_layout = QHBoxLayout()
 
-        btn_style = """
-            QPushButton {
-                font-size: 13px;
-                font-weight: bold;
-                border-radius: 4px;
-                border: 2px solid transparent;
-            }
-            QPushButton:hover {
-                border: 2px solid #333;
-            }
-            QPushButton:pressed {
-                border: 2px solid #000;
-            }
-        """
-
         self.btn_save = QPushButton("💾 Save")
+        self.btn_save.setObjectName("successButton")
         self.btn_save.setFixedSize(120, 45)
-        self.btn_save.setStyleSheet(btn_style + """
-            QPushButton { background-color: #4CAF50; color: white; }
-            QPushButton:hover { background-color: #45a049; }
-        """)
         self.btn_save.clicked.connect(self._on_save)
 
         self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.setObjectName("secondaryButton")
         self.btn_cancel.setFixedSize(120, 45)
-        self.btn_cancel.setStyleSheet(btn_style + """
-            QPushButton { background-color: #9e9e9e; color: white; }
-            QPushButton:hover { background-color: #757575; }
-        """)
         self.btn_cancel.clicked.connect(self.reject)
 
         btn_layout.addStretch()
@@ -294,7 +241,24 @@ class SalaryStructureDialog(QDialog):
                 return
             
             # Calculate all components
-            result = self.calc_service.calculate_salary_structure_from_gross(gross, pf_applicable)
+            result = self.calc_service.calculate_salary_structure_from_gross(
+                gross,
+                pf_applicable,
+                self.chk_esi.isChecked(),
+            )
+
+            # Auto-update ESIC applicability from basic salary threshold.
+            # If basic > 21000 then ESIC must be off.
+            auto_esi_applicable = result["basic_salary"] <= Decimal("21000")
+            if self.chk_esi.isChecked() != auto_esi_applicable:
+                self.chk_esi.blockSignals(True)
+                self.chk_esi.setChecked(auto_esi_applicable)
+                self.chk_esi.blockSignals(False)
+                result = self.calc_service.calculate_salary_structure_from_gross(
+                    gross,
+                    pf_applicable,
+                    auto_esi_applicable,
+                )
             
             # Update fields
             self.txt_basic.setText(f"{result['basic_salary']:.2f}")
@@ -348,6 +312,7 @@ class SalaryStructureDialog(QDialog):
         db = get_db()
         with db.get_session() as session:
             repo = SalaryStructureRepository(session)
+            employee_repo = EmployeeRepository(session)
             struct = repo.get_by_id(self.structure_id)
 
             if struct:
@@ -381,6 +346,7 @@ class SalaryStructureDialog(QDialog):
                 self.txt_gross.setText(f"{gross:.2f}")
 
                 self.chk_pf.setChecked(struct.pf_applicable)
+                self.chk_esi.setChecked(struct.esi_applicable)
 
                 self.txt_notes.setText(struct.notes or "")
 
@@ -404,6 +370,7 @@ class SalaryStructureDialog(QDialog):
         db = get_db()
         with db.get_session() as session:
             repo = SalaryStructureRepository(session)
+            employee_repo = EmployeeRepository(session)
 
             if self.is_edit_mode:
                 struct = repo.get_by_id(self.structure_id)
@@ -433,6 +400,7 @@ class SalaryStructureDialog(QDialog):
             result = self.calc_service.calculate_salary_structure_from_gross(
                 ctc,
                 self.chk_pf.isChecked(),
+                self.chk_esi.isChecked(),
             )
             struct.basic_salary = result["basic_salary"]
             struct.hra = result["hra"]
@@ -442,10 +410,34 @@ class SalaryStructureDialog(QDialog):
             struct.pf_employer = result["pf_employer"]
 
             struct.pf_applicable = self.chk_pf.isChecked()
-            # ESI is auto-calculated based on gross salary
+            # ESI applicability is controlled by user flag.
             # PT is mandatory for all employees
-            struct.esi_applicable = True  # Will be checked against gross during payroll
+            struct.esi_applicable = self.chk_esi.isChecked()
             struct.pt_applicable = True   # Always applicable
+
+            # Statutory ID checks based on applicability flags.
+            employee_id = struct.employee_id if struct.employee_id else self.employee_id
+            emp = employee_repo.get_by_id(employee_id) if employee_id else None
+            uan_value = (emp.uan_number or "").strip().upper() if emp else ""
+            esi_value = (emp.esi_number or "").strip().upper() if emp else ""
+
+            if struct.pf_applicable and (not uan_value or uan_value == "NA"):
+                QMessageBox.warning(
+                    self,
+                    "PF Details Required",
+                    "PF is marked applicable, but employee UAN is missing/NA. "
+                    "Update employee statutory details first."
+                )
+                return
+
+            if struct.esi_applicable and (not esi_value or esi_value == "NA"):
+                QMessageBox.warning(
+                    self,
+                    "ESIC Details Required",
+                    "ESIC is marked applicable, but employee ESI Number is missing/NA. "
+                    "Update employee statutory details first."
+                )
+                return
 
             struct.notes = self.txt_notes.text().strip() or None
 

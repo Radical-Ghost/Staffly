@@ -7,6 +7,7 @@ from .salary_structure_repository import SalaryStructureRepository
 from .payroll_period_repository import PayrollPeriodRepository
 from .payroll_period_company_status_repository import PayrollPeriodCompanyStatusRepository
 from .monthly_payroll_repository import MonthlyPayrollRepository
+from .leave_balance_repository import LeaveBalanceRepository
 
 __all__ = [
     "BaseRepository",
@@ -16,4 +17,5 @@ __all__ = [
     "PayrollPeriodRepository",
     "PayrollPeriodCompanyStatusRepository",
     "MonthlyPayrollRepository",
+    "LeaveBalanceRepository",
 ]

@@ -154,39 +154,18 @@ class AttendanceDialog(QDialog):
         layout.addWidget(calc_group)
 
         # ═══════════════════════════════════════════════════════════════════
-        # BUTTONS
+        # BUTTONS - styled via global QSS
         # ═══════════════════════════════════════════════════════════════════
         btn_layout = QHBoxLayout()
 
-        btn_style = """
-            QPushButton {
-                font-size: 13px;
-                font-weight: bold;
-                border-radius: 4px;
-                border: 2px solid transparent;
-            }
-            QPushButton:hover {
-                border: 2px solid #333;
-            }
-            QPushButton:pressed {
-                border: 2px solid #000;
-            }
-        """
-
         self.btn_save = QPushButton("💾 Save & Recalculate")
+        self.btn_save.setObjectName("successButton")
         self.btn_save.setFixedSize(150, 50)
-        self.btn_save.setStyleSheet(btn_style + """
-            QPushButton { background-color: #4CAF50; color: white; }
-            QPushButton:hover { background-color: #45a049; }
-        """)
         self.btn_save.clicked.connect(self._on_save)
 
         self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.setObjectName("secondaryButton")
         self.btn_cancel.setFixedSize(150, 50)
-        self.btn_cancel.setStyleSheet(btn_style + """
-            QPushButton { background-color: #9e9e9e; color: white; }
-            QPushButton:hover { background-color: #757575; }
-        """)
         self.btn_cancel.clicked.connect(self.reject)
 
         btn_layout.addStretch()

@@ -17,9 +17,10 @@ from PySide6.QtCore import Qt, QSettings, QPoint, QPropertyAnimation, QEasingCur
 from PySide6.QtGui import QAction, QActionGroup
 
 from staffly.config import get_config
-from staffly.ui.theme import get_theme, ThemeMode
+from staffly.ui.theme import get_theme, load_theme, toggle_theme, get_theme_colors, is_dark_theme
 from staffly.ui.widgets.employee_widget import EmployeeWidget
 from staffly.ui.widgets.salary_widget import SalaryWidget
+from staffly.ui.widgets.attendance_widget import AttendanceWidget
 from staffly.ui.widgets.payroll_widget import PayrollWidget
 from staffly.ui.widgets.reports_widget import ReportsWidget
 
@@ -37,7 +38,6 @@ class MainWindow(QMainWindow):
     def __init__(self, companies: list[tuple[int, str, str]]):
         super().__init__()
         self.config = get_config()
-        self.theme = get_theme()
         self.settings = QSettings("Staffly", "Staffly")
         self.available_companies = companies
         self.selected_company_id: int | None = None
@@ -47,9 +47,6 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self._setup_menu()
         self._setup_statusbar()
-        
-        # Apply saved theme
-        self.theme.apply_theme(self.theme.mode)
 
     def _setup_ui(self):
         """Initialize the main UI components."""
@@ -62,10 +59,10 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        # Main layout
+        # Main layout with modern spacing
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(16, 16, 16, 16)
+        main_layout.setSpacing(16)
 
         # Tab widget
         self.tab_widget = QTabWidget()
@@ -77,48 +74,83 @@ class MainWindow(QMainWindow):
         self._setup_company_splash()
 
     def _setup_company_splash(self):
-        """Create startup company splash selector inside main window."""
+        """Create themed startup company splash selector."""
+        # Get current theme colors
+        colors = get_theme_colors()
+        
         self.splash_overlay = QWidget(self.centralWidget())
-        self.splash_overlay.setStyleSheet(
-            """
-            QWidget {
-                background-color: #f8fbff;
-                border: 1px solid #d6e4f2;
-            }
-            """
-        )
+        self.splash_overlay.setStyleSheet(f"""
+            QWidget {{
+                background-color: {colors.background};
+                border: none;
+            }}
+        """)
 
         layout = QVBoxLayout(self.splash_overlay)
-        layout.setContentsMargins(30, 24, 30, 24)
-        layout.setSpacing(14)
+        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setSpacing(20)
+        layout.addStretch(1)
+        
+        # Card container for content
+        card = QWidget()
+        card.setStyleSheet(f"""
+            QWidget {{
+                background-color: {colors.surface};
+                border: 1px solid {colors.border};
+                border-radius: 12px;
+            }}
+        """)
+        card.setMaximumWidth(500)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(40, 40, 40, 40)
+        card_layout.setSpacing(24)
 
+        # Logo / Title
         title = QLabel("Staffly")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 30px; font-weight: 700;")
-        layout.addWidget(title)
+        title.setStyleSheet(f"""
+            font-size: 32px; 
+            font-weight: 700; 
+            color: {colors.primary};
+            border: none;
+            background: transparent;
+        """)
+        card_layout.addWidget(title)
 
-        subtitle = QLabel("Select company")
+        subtitle = QLabel("Select your company to continue")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet("font-size: 14px; color: #555;")
-        layout.addWidget(subtitle)
+        subtitle.setStyleSheet(f"""
+            font-size: 14px; 
+            color: {colors.text_secondary};
+            border: none;
+            background: transparent;
+        """)
+        card_layout.addWidget(subtitle)
 
-        radio_style = """
-            QRadioButton {
-                spacing: 10px;
-                font-size: 16px;
-                padding: 8px 4px;
-            }
-            QRadioButton::indicator {
-                width: 18px;
-                height: 18px;
-                border-radius: 9px;
-                border: 2px solid #666;
-                background: white;
-            }
-            QRadioButton::indicator:checked {
-                border: 2px solid #1976D2;
-                background: #1976D2;
-            }
+        # Radio button styling with current theme colors
+        radio_style = f"""
+            QRadioButton {{
+                spacing: 12px;
+                font-size: 15px;
+                padding: 12px 16px;
+                color: {colors.text_primary};
+                background: transparent;
+                border: none;
+            }}
+            QRadioButton::indicator {{
+                width: 20px;
+                height: 20px;
+                border-radius: 10px;
+                border: 2px solid {colors.border};
+                background: {colors.surface_alt};
+            }}
+            QRadioButton::indicator:hover {{
+                border-color: {colors.primary};
+            }}
+            QRadioButton::indicator:checked {{
+                border: 2px solid {colors.primary};
+                background: {colors.primary};
+            }}
         """
 
         radio_row = QHBoxLayout()
@@ -138,32 +170,38 @@ class MainWindow(QMainWindow):
                 radio.setChecked(True)
 
         radio_row.addStretch()
-        layout.addLayout(radio_row)
-        layout.addStretch()
+        card_layout.addLayout(radio_row)
 
-        self.btn_select_company = QPushButton("Select")
-        self.btn_select_company.setFixedSize(140, 46)
+        # Primary button with theme colors
+        colors = get_theme_colors()  # Get fresh colors
+        self.btn_select_company = QPushButton("Continue")
+        self.btn_select_company.setFixedSize(160, 44)
         self.btn_select_company.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_select_company.setStyleSheet(
-            """
-            QPushButton {
-                font-size: 14px;
-                font-weight: 700;
-                color: white;
-                background-color: #1976D2;
+        self.btn_select_company.setStyleSheet(f"""
+            QPushButton {{
+                font-size: 15px;
+                font-weight: 600;
+                color: {colors.selection_text};
+                background-color: {colors.primary};
                 border: none;
                 border-radius: 8px;
-            }
-            QPushButton:hover {
-                background-color: #1565C0;
-            }
-            QPushButton:pressed {
-                background-color: #0D47A1;
-            }
-            """
-        )
+            }}
+            QPushButton:hover {{
+                background-color: {colors.primary_hover};
+            }}
+            QPushButton:pressed {{
+                background-color: {colors.primary};
+            }}
+        """)
         self.btn_select_company.clicked.connect(self._on_select_company)
-        layout.addWidget(self.btn_select_company, alignment=Qt.AlignmentFlag.AlignHCenter)
+        card_layout.addWidget(self.btn_select_company, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+        # Add card to layout
+        layout.addWidget(card, alignment=Qt.AlignmentFlag.AlignCenter)
+        layout.addStretch(1)
+
+        self.splash_overlay.raise_()
+        self.splash_overlay.setGeometry(self.centralWidget().rect())
 
         self.splash_overlay.raise_()
         self.splash_overlay.setGeometry(self.centralWidget().rect())
@@ -228,14 +266,21 @@ class MainWindow(QMainWindow):
         )
         self.tab_widget.addTab(self.salary_widget, "💰 Salary")
 
-        # Tab 3: Payroll
+        # Tab 3: Attendance
+        self.attendance_widget = AttendanceWidget(
+            selected_company_id=self.selected_company_id,
+            selected_company_name=self.selected_company_name,
+        )
+        self.tab_widget.addTab(self.attendance_widget, "📅 Attendance")
+
+        # Tab 4: Payroll
         self.payroll_widget = PayrollWidget(
             selected_company_id=self.selected_company_id,
             selected_company_name=self.selected_company_name,
         )
         self.tab_widget.addTab(self.payroll_widget, "📊 Payroll")
 
-        # Tab 4: Reports
+        # Tab 5: Reports
         self.reports_widget = ReportsWidget(
             selected_company_id=self.selected_company_id,
             selected_company_name=self.selected_company_name,
@@ -291,7 +336,7 @@ class MainWindow(QMainWindow):
         view_menu = menubar.addMenu("&View")
 
         # Theme toggle action
-        self.theme_action = QAction("🌙 Dark Mode" if self.theme.is_dark else "☀️ Light Mode", self)
+        self.theme_action = QAction("🌙 Dark Mode" if is_dark_theme() else "☀️ Light Mode", self)
         self.theme_action.setShortcut("Ctrl+T")
         self.theme_action.triggered.connect(self._on_toggle_theme)
         view_menu.addAction(self.theme_action)
@@ -461,12 +506,28 @@ class MainWindow(QMainWindow):
 
     def _on_scale_changed(self, scale_factor: float):
         """Handle scale factor change - applies immediately."""
-        self.theme.set_scale(scale_factor)
-        self.show_status(f"Scale set to {int(scale_factor * 100)}%")
+        # Note: Scale factor is saved but doesn't affect QSS-based theming
+        self.settings.setValue("ui_scale_factor", scale_factor)
+        self.settings.sync()
+        self.show_status(f"Scale set to {int(scale_factor * 100)}% (restart required)")
 
     def _on_toggle_theme(self):
         """Toggle between light and dark mode."""
-        self.theme.toggle_theme()
+        toggle_theme()
         # Update menu text
-        self.theme_action.setText("🌙 Dark Mode" if self.theme.is_dark else "☀️ Light Mode")
-        self.show_status(f"Switched to {'Dark' if self.theme.is_dark else 'Light'} Mode")
+        is_dark = is_dark_theme()
+        self.theme_action.setText("🌙 Dark Mode" if is_dark else "☀️ Light Mode")
+        self.show_status(f"Switched to {'Dark' if is_dark else 'Light'} Mode")
+        # Update splash overlay colors if still visible
+        if hasattr(self, 'splash_overlay') and self.splash_overlay.isVisible():
+            self._update_splash_colors()
+
+    def _update_splash_colors(self):
+        """Update splash screen colors when theme changes."""
+        colors = get_theme_colors()
+        self.splash_overlay.setStyleSheet(f"""
+            QWidget {{
+                background-color: {colors.background};
+                border: none;
+            }}
+        """)

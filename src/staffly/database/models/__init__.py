@@ -7,6 +7,7 @@ from .salary_structure import SalaryStructure
 from .payroll_period import PayrollPeriod
 from .payroll_period_company_status import PayrollPeriodCompanyStatus
 from .monthly_payroll import MonthlyPayroll
+from .leave_balance import LeaveBalance
 
 __all__ = [
     "Base",
@@ -18,4 +19,5 @@ __all__ = [
     "PayrollPeriod",
     "PayrollPeriodCompanyStatus",
     "MonthlyPayroll",
+    "LeaveBalance",
 ]

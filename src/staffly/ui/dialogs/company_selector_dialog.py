@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint
 
+from staffly.ui.theme import get_theme_colors
+
 
 class CompanySelectorDialog(QDialog):
     """Splash-style dialog to select active company context."""
@@ -24,6 +26,9 @@ class CompanySelectorDialog(QDialog):
         self._setup_ui()
 
     def _setup_ui(self):
+        # Get theme colors
+        colors = get_theme_colors()
+        
         self.setWindowTitle("Select Company")
         self.setWindowFlags(
             Qt.WindowType.Dialog
@@ -44,29 +49,29 @@ class CompanySelectorDialog(QDialog):
 
         subtitle = QLabel("Choose company scope for this session")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet("font-size: 13px; color: #666;")
+        subtitle.setStyleSheet(f"font-size: 13px; color: {colors.text_secondary};")
         layout.addWidget(subtitle)
 
         self.button_group = QButtonGroup(self)
         self.button_group.setExclusive(True)
 
-        radio_style = """
-            QRadioButton {
+        radio_style = f"""
+            QRadioButton {{
                 spacing: 10px;
                 font-size: 15px;
                 padding: 6px 4px;
-            }
-            QRadioButton::indicator {
+            }}
+            QRadioButton::indicator {{
                 width: 18px;
                 height: 18px;
                 border-radius: 9px;
-                border: 2px solid #666;
-                background: white;
-            }
-            QRadioButton::indicator:checked {
-                border: 2px solid #1976D2;
-                background: #1976D2;
-            }
+                border: 2px solid {colors.overlay};
+                background: {colors.surface_alt};
+            }}
+            QRadioButton::indicator:checked {{
+                border: 2px solid {colors.primary};
+                background: {colors.primary};
+            }}
         """
 
         for index, (company_id, company_code, company_name) in enumerate(self._companies):
@@ -85,24 +90,22 @@ class CompanySelectorDialog(QDialog):
         self.btn_select = QPushButton("Select")
         self.btn_select.setFixedSize(140, 44)
         self.btn_select.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_select.setStyleSheet(
-            """
-            QPushButton {
+        self.btn_select.setStyleSheet(f"""
+            QPushButton {{
                 font-size: 14px;
                 font-weight: 700;
-                color: white;
-                background-color: #1976D2;
+                color: {colors.selection_text};
+                background-color: {colors.primary};
                 border: none;
                 border-radius: 8px;
-            }
-            QPushButton:hover {
-                background-color: #1565C0;
-            }
-            QPushButton:pressed {
-                background-color: #0D47A1;
-            }
-            """
-        )
+            }}
+            QPushButton:hover {{
+                background-color: {colors.primary_hover};
+            }}
+            QPushButton:pressed {{
+                background-color: {colors.primary};
+            }}
+        """)
         self.btn_select.clicked.connect(self._on_select)
         layout.addWidget(self.btn_select, alignment=Qt.AlignmentFlag.AlignHCenter)
 

@@ -105,7 +105,7 @@ class EmployeeDialog(QDialog):
         self.cmb_gender.addItem("Male", "Male")
         self.cmb_gender.addItem("Female", "Female")
         self.cmb_gender.addItem("Other", "Other")
-        basic_layout.addRow("Gender:", self.cmb_gender)
+        basic_layout.addRow("Gender*:", self.cmb_gender)
 
         self.txt_designation = QLineEdit()
         self.txt_designation.setMaxLength(100)
@@ -113,12 +113,12 @@ class EmployeeDialog(QDialog):
 
         self.txt_department = QLineEdit()
         self.txt_department.setMaxLength(100)
-        basic_layout.addRow("Department:", self.txt_department)
+        basic_layout.addRow("Department*:", self.txt_department)
 
         self.txt_branch = QLineEdit()
         self.txt_branch.setMaxLength(100)
         self.txt_branch.setPlaceholderText("e.g., Head Office, Mumbai Branch")
-        basic_layout.addRow("Branch:", self.txt_branch)
+        basic_layout.addRow("Branch*:", self.txt_branch)
 
         tab_widget.addTab(basic_tab, "Basic Info")
 
@@ -180,57 +180,38 @@ class EmployeeDialog(QDialog):
         stat_layout.addRow("PAN Number:", self.txt_pan)
 
         self.txt_uan = QLineEdit()
-        self.txt_uan.setPlaceholderText("UAN for PF")
-        stat_layout.addRow("UAN (PF):", self.txt_uan)
+        self.txt_uan.setPlaceholderText("Enter UAN or NA if PF not applicable")
+        stat_layout.addRow("UAN (PF)*:", self.txt_uan)
 
         self.txt_esi = QLineEdit()
-        self.txt_esi.setPlaceholderText("ESI Number")
-        stat_layout.addRow("ESI Number:", self.txt_esi)
+        self.txt_esi.setPlaceholderText("Enter ESI number or NA if ESIC not applicable")
+        stat_layout.addRow("ESI Number*:", self.txt_esi)
 
         tab_widget.addTab(stat_tab, "Statutory")
 
         layout.addWidget(tab_widget)
 
         # ═══════════════════════════════════════════════════════════════════
-        # BUTTONS
+        # BUTTONS - styled via global QSS
         # ═══════════════════════════════════════════════════════════════════
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(12)
 
-        btn_style = """
-            QPushButton {
-                font-size: 13px;
-                font-weight: bold;
-                border-radius: 4px;
-                border: 2px solid transparent;
-            }
-            QPushButton:hover {
-                border: 2px solid #333;
-            }
-            QPushButton:pressed {
-                border: 2px solid #000;
-            }
-        """
-
-        self.btn_save = QPushButton("💾 Save")
-        self.btn_save.setFixedSize(150, 50)
-        self.btn_save.setStyleSheet(btn_style + """
-            QPushButton { background-color: #4CAF50; color: white; }
-            QPushButton:hover { background-color: #45a049; }
-        """)
+        self.btn_save = QPushButton("Save Employee")
+        self.btn_save.setObjectName("primaryButton")
+        self.btn_save.setFixedHeight(44)
+        self.btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_save.clicked.connect(self._on_save)
 
         self.btn_cancel = QPushButton("Cancel")
-        self.btn_cancel.setFixedSize(150, 50)
-        self.btn_cancel.setStyleSheet(btn_style + """
-            QPushButton { background-color: #9e9e9e; color: white; }
-            QPushButton:hover { background-color: #757575; }
-        """)
+        self.btn_cancel.setObjectName("secondaryButton")
+        self.btn_cancel.setFixedHeight(44)
+        self.btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_cancel.clicked.connect(self.reject)
 
         btn_layout.addStretch()
-        btn_layout.addWidget(self.btn_save)
         btn_layout.addWidget(self.btn_cancel)
+        btn_layout.addWidget(self.btn_save)
 
         layout.addLayout(btn_layout)
 
@@ -320,6 +301,31 @@ class EmployeeDialog(QDialog):
             self.txt_designation.setFocus()
             return False
 
+        if not self.cmb_gender.currentData():
+            QMessageBox.warning(self, "Validation", "Gender is required.")
+            self.cmb_gender.setFocus()
+            return False
+
+        if not self.txt_department.text().strip():
+            QMessageBox.warning(self, "Validation", "Department is required.")
+            self.txt_department.setFocus()
+            return False
+
+        if not self.txt_branch.text().strip():
+            QMessageBox.warning(self, "Validation", "Branch is required.")
+            self.txt_branch.setFocus()
+            return False
+
+        if not self.txt_uan.text().strip():
+            QMessageBox.warning(self, "Validation", "UAN (PF) is required. Enter 'NA' if PF is not applicable.")
+            self.txt_uan.setFocus()
+            return False
+
+        if not self.txt_esi.text().strip():
+            QMessageBox.warning(self, "Validation", "ESI Number is required. Enter 'NA' if ESIC is not applicable.")
+            self.txt_esi.setFocus()
+            return False
+
         return True
 
     def _on_save(self):
@@ -358,8 +364,10 @@ class EmployeeDialog(QDialog):
             emp.address = self.txt_address.text().strip() or None
             emp.aadhar_number = self.txt_aadhar.text().strip() or None
             emp.pan_number = self.txt_pan.text().strip().upper() or None
-            emp.uan_number = self.txt_uan.text().strip() or None
-            emp.esi_number = self.txt_esi.text().strip() or None
+            uan_text = self.txt_uan.text().strip()
+            esi_text = self.txt_esi.text().strip()
+            emp.uan_number = "NA" if uan_text.upper() == "NA" else uan_text
+            emp.esi_number = "NA" if esi_text.upper() == "NA" else esi_text
             emp.is_active = self.chk_active.isChecked()
 
             # Dates

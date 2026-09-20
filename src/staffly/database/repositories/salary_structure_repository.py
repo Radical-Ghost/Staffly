@@ -3,6 +3,7 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from datetime import date
+from datetime import timedelta
 
 from staffly.database.models.salary_structure import SalaryStructure
 from .base_repository import BaseRepository
@@ -45,5 +46,6 @@ class SalaryStructureRepository(BaseRepository[SalaryStructure]):
         """
         current = self.get_current_for_employee(employee_id)
         if current and current.effective_to is None:
-            current.effective_to = end_date
+            # Previous structure should end one day before the new structure starts.
+            current.effective_to = end_date - timedelta(days=1)
             self.session.flush()

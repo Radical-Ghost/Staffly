@@ -9,6 +9,7 @@ from .models import (
     PayrollPeriod,
     PayrollPeriodCompanyStatus,
     MonthlyPayroll,
+    LeaveBalance,
 )
 
 __all__ = [
@@ -25,4 +26,5 @@ __all__ = [
     "PayrollPeriod",
     "PayrollPeriodCompanyStatus",
     "MonthlyPayroll",
+    "LeaveBalance",
 ]

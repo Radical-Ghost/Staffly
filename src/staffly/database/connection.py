@@ -167,6 +167,17 @@ class DatabaseManager:
                     )
                 )
 
+            # monthly_payroll.arrears
+            mp_columns = conn.execute(text("PRAGMA table_info(monthly_payroll)")).fetchall()
+            mp_column_names = {row[1] for row in mp_columns}
+            if "arrears" not in mp_column_names:
+                conn.execute(
+                    text(
+                        "ALTER TABLE monthly_payroll "
+                        "ADD COLUMN arrears NUMERIC(12, 2) NOT NULL DEFAULT 0.00"
+                    )
+                )
+
     def drop_tables(self) -> None:
         """Drop all tables (use with caution!)."""
         if not self.is_initialized:

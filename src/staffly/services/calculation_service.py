@@ -43,7 +43,7 @@ class CalculationService:
     # ═══════════════════════════════════════════════════════════════════════════
 
     def calculate_salary_structure_from_gross(
-        self, gross_salary: Decimal, pf_applicable: bool = True
+        self, gross_salary: Decimal, pf_applicable: bool = True, esi_applicable: bool = True
     ) -> Dict[str, Decimal]:
         """
         Calculate salary structure components from CTC (gross salary).
@@ -55,13 +55,14 @@ class CalculationService:
         - CCA = IF(CTC > 50000, CTC * 20%, 0)
         - PF (Employer) = IF(PF, MIN(1800, ROUND((CTC - HRA - Bonus - (CTC * 8.125%)) * 12%)), 0)
         - Other Allowance = CEIL(CTC - Basic - HRA - Bonus - CCA - PF (Employer))  (round up)
-        - Gross Total = Basic + HRA + Bonus + CCA + Other + PF_Employer
+        - Gross Total = Basic + HRA + Bonus + CCA + Other + PF_Employer + arrears (if present)
         - PF (Employee) = PF (Employer)
         - ESIC (Employee) = IF((Gross - PF (Employer))*50% < 21000, ROUND(Basic*50% * 0.75%), 0)
         
         Args:
             gross_salary: The CTC per month (input)
             pf_applicable: Whether PF is applicable for this employee
+            esi_applicable: Whether ESIC is applicable for this employee
             
         Returns:
             Dictionary with all calculated components
@@ -108,7 +109,7 @@ class CalculationService:
         
         # ESIC (Employee): IF((Gross - PF_Employer)*50% < 21000, ROUND(Basic*50% * 0.75%), 0)
         esi_threshold_base = (gross_total - pf_employer) * Decimal("0.50")
-        if esi_threshold_base < Decimal("21000"):
+        if esi_applicable and esi_threshold_base < Decimal("21000"):
             esi_employee = _round_rupee(basic * Decimal("0.0075"))
         else:
             esi_employee = Decimal("0.00")
@@ -244,6 +245,7 @@ class CalculationService:
         paid_days: int,
         total_working_days: int,
         pf_applicable: bool,
+        esi_applicable: bool = True,
         pf_employer_monthly: Decimal | None = None,
         gender: str | None = None,
         loan_deduction: Decimal = Decimal("0.00"),
@@ -298,7 +300,7 @@ class CalculationService:
         esi_employee = Decimal("0.00")
         esi_employer = Decimal("0.00")
         esi_threshold_base = (gross_earnings - pf_employer) * Decimal("0.50")
-        if esi_threshold_base < Decimal("21000"):
+        if esi_applicable and esi_threshold_base < Decimal("21000"):
             esi_employee = _round_rupee(pro_rated_basic * Decimal("0.0075"))
 
         # ═══════════════════════════════════════════════════════════════════

@@ -77,6 +77,7 @@ class BaseSlipTemplate(ABC):
         output_path: Path,
         company_name: str,
         company_address: str,
+        leave_balance=None,
     ) -> Path:
         """
         Generate the salary slip PDF.
@@ -86,6 +87,7 @@ class BaseSlipTemplate(ABC):
             output_path: Where to save the PDF
             company_name: Company name
             company_address: Company address
+            leave_balance: Optional LeaveBalance ORM object for FY balance display
             
         Returns:
             Path to the generated PDF

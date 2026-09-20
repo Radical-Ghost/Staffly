@@ -28,7 +28,6 @@ MANIFEST
 
 # PyInstaller
 *.manifest
-*.spec
 
 # Installer logs
 pip-log.txt
@@ -104,3 +103,14 @@ output/
 reports_output/
 *.pdf
 !src/staffly/reports/templates/*.pdf
+
+# Local exports / backups
+Payroll_*.csv
+Salary_Slip_*.pdf
+data/backups/
+temp/
+temp.md
+Updates.txt
+.gitignore
+
+Updates.txt

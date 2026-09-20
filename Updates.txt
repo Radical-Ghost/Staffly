@@ -1,0 +1,59 @@
+# in employee tab
+- make gender dep branch mandatory
+- make PF and ESIC mandatory, if not applicable then enter NA (as placeholder text)
+
+# in structure tab
+- auto update the ESIC checkbox if basic sal is above 21000 and prompt if ESIC is NA
+- do the same for PF if selected to be applicable and it was NA then prompt
+- rename effetive to -> effective till
+- last structure's effective till will be -1 day than new strucutre's effective from, month or year might be changed so look out for that
+- remove the current sal structure just above the buttons for add new structure and edit structure
+
+
+- 1 financial year is from april - march (next year)
+- dont copy last months leaves/absents/late marks or TDS, Loans
+- each year has only 7 SL, PL, CL for each employee (need to be stored in database, add a red highlight in row if the balance ever goes in negative indicating an error, update auto if in hierarchy PL > CL > SL, add popup to show balance of leaves)
+- late mark beside absent (decimal)
+- absent (decimal) for half day
+- arrears [column name: Arrears of month to month year] (only for the month when sal structure changed, pays off the outstanding bonus from the latest financial year, make it auto calculate based on the last structure and new structure, add a column to show the arrears amount)
+- make tds and advance/loan editable and be added/calculated in deductions
+
+
+- pdf = name of employee
+- date of joining = DD - MM - YYYY
+- Adjusted = current months leaves
+- balance is the total remaining leaves for the employee in that financial year (calculated as 7 - adjusted leaves, )
+- add empty cols below allowance (below line) and bonus (after line)  
+- if pf and esic not appicable dont show them 
+- the layout will always be same, the content might 
+- show  advance/loan then tds if applicable else the column will be blank 
+- show arrears below bonus in the same slot
+
+
+(change the payroll's heading to be more aligned to dark theme)
+
+ok now add one more page between salary and payroll named as attendance,
+
+this will have the same structure as payroll but will only has
+emp code, name, total days, paid, present, pl, sl, cl, absent, late, bal pl, bal sl, bal cl
+(keep the editable part same, just the pl, sl, cl, absent, late)
+
+in payroll we will have the 
+emp code, name, Paid Days, PF, ESIC, Basic Salary, HRA, CCA Allowance, Other Allowance, Bonus, PF (Employer), Gross Total, PF (Employer), PF (Employee), ESIC (Employee), Prof. Tax, Loan, TDS, Net Total
+(keep the editable part same, just the loan, tds)
+the pf and esic before basic sal is applicability in boolean format yes or no 
+
+the rest of the functionality will remain same 
+
+make it so that the new period can only be added in attendance page and when we add a new period it should automatically reflect in payroll page as well, with the same period and the data will be empty for that period in payroll until we fill it in attendance page (maybe add a placeholder saying to fill attendance first).
+
+also add a feature to export the payroll as a sheet, that can be printed
+
+
+u changed the functionality for the tables, re make the old functionality in both payroll and attendace where, (check reference image) when any of the value is selected/clicked it will highlight the whole row and darken the color of the selected feature/column value, also im able to move with arrow keys and when i press any number it changes the numbers/updates it by opening a same window of similar size to the cell, 
+
+in attendace it should auto update the SL, CL, PL, and absent that is when ever any of the leaves goes above 7 the row will update the balance of that leave to 0 and cap the leave to 7, the rest (original val - 7) will go towards other leaves if no leaves are there then it will be counted as absent, with a max of (days in that month - sl - pl - cl)
+
+eg: if i put sl=10, sl will be set to 7 and bal sl will be 0, then the app will check in either pl if remaining leaves are there but only 1 then it will update the pl to 1 and bal pl to 0 (if lets say pl was 2 before this it will add 1 and make it 3), now 1 leave is remaining lets say cl is also 1 then similarly it will update the values like pl, not 1 more leave is remainig as all the 3 are depleted it will add this in absent (if any value present in absent it will add to it, not just change it to 1 or smth liek that)
+
+similarly update the payroll table to input loan and tds (these are working but make sure there is consistency in attendance and payrooll table)

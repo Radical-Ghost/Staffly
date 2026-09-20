@@ -8,3 +8,7 @@ class HNLTemplate(EndeeTemplate):
 
     name = "HNL"
     description = "HNL template"
+
+    def _get_logo_filename(self) -> str:
+        """Use HNL-specific header logo."""
+        return "HNL.jpeg"
