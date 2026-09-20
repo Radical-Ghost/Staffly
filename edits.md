@@ -7,3 +7,6 @@
 6. probation ends will be considered at start or next month if the employee joins in the middle of the month say some one joins in 
 7. after probation ends leaves will be given based the formula (remaining months in that year) * 21/12, for leaves if the leaves is in fraction of .01 - .49 they will be bumped up to .5 and for .51 - .99 will be bumped up to +1, Divide leaves equally then if some are extra then use the priority PL > SL > CL
 8. ESIC: if one leaves after increase (new structure), for the 1st 6 months the ESIC will be calculated based on the new structure after it is added.
+
+
+9. 
