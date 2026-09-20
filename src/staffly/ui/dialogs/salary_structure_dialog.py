@@ -27,15 +27,15 @@ from staffly.services.calculation_service import CalculationService
 class SalaryStructureDialog(QDialog):
     """
     Dialog for adding/editing salary structure.
-    
+
     Features:
     - Enter Gross Salary → Auto-calculate all components
     - Manual override possible for each component
-    
+
     Usage:
         # Add new
         dialog = SalaryStructureDialog(parent, employee_id=5)
-        
+
         # Edit existing
         dialog = SalaryStructureDialog(parent, employee_id=5, structure_id=10)
     """
@@ -47,8 +47,24 @@ class SalaryStructureDialog(QDialog):
         self.is_edit_mode = structure_id is not None
         self.calc_service = CalculationService()
         self._auto_calculating = False  # Flag to prevent recursion
+
+        # Define the alert label before setup_ui populates it
+        self.lbl_probation_alert = QLabel("⚠️ EMPLOYEE IS CURRENTLY ON PROBATION")
+        self.lbl_probation_alert.setStyleSheet("color: #E65100; background-color: #FFF3E0; font-weight: bold; padding: 8px; border-radius: 4px; border: 1px solid #FFCC80; margin-bottom: 10px;")
+        self.lbl_probation_alert.setVisible(False)
+
         self._setup_ui()
-        
+
+        # Check employee probation status safely
+        if self.employee_id:
+            db = get_db()
+            with db.get_session() as session:
+                from staffly.database.repositories import EmployeeRepository
+                emp_repo = EmployeeRepository(session)
+                emp = emp_repo.get_by_id(self.employee_id)
+                if emp and getattr(emp, 'is_on_probation', False):
+                    self.lbl_probation_alert.setVisible(True)
+
         if self.is_edit_mode:
             self._load_structure()
 
@@ -72,6 +88,9 @@ class SalaryStructureDialog(QDialog):
         # ═══════════════════════════════════════════════════════════════════
         left_column = QVBoxLayout()
 
+        # Add the probation alert at the very top of the left column
+        left_column.addWidget(self.lbl_probation_alert)
+
         # EFFECTIVE DATES
         dates_group = QGroupBox("Effective Period")
         dates_layout = QFormLayout(dates_group)
@@ -90,21 +109,21 @@ class SalaryStructureDialog(QDialog):
         # GROSS SALARY INPUT
         gross_group = QGroupBox("💰 Gross Salary")
         gross_layout = QVBoxLayout(gross_group)
-        
+
         gross_input_layout = QHBoxLayout()
         self.txt_gross = QLineEdit("0.00")
         self.txt_gross.setValidator(money_validator)
         self.txt_gross.setObjectName("grossInput")
-        
+
         self.btn_calculate = QPushButton("🧮 Calculate")
         self.btn_calculate.setObjectName("successButton")
         self.btn_calculate.setFixedSize(100, 40)
         self.btn_calculate.clicked.connect(self._on_calculate_clicked)
-        
+
         gross_input_layout.addWidget(self.txt_gross)
         gross_input_layout.addWidget(self.btn_calculate)
         gross_layout.addLayout(gross_input_layout)
-        
+
         left_column.addWidget(gross_group)
 
         # STATUTORY APPLICABILITY
@@ -121,7 +140,7 @@ class SalaryStructureDialog(QDialog):
         self.chk_esi.stateChanged.connect(self._on_pf_changed)
         stat_layout.addWidget(self.chk_esi)
 
-        # Note: ESI is auto-calculated based on gross salary (if Gross*50% < 21000)
+        # Note: ESI is auto-calculated based on gross salary
         # Professional Tax is mandatory and calculated based on gender and gross
 
         left_column.addWidget(stat_group)
@@ -230,16 +249,16 @@ class SalaryStructureDialog(QDialog):
         """Calculate all components from gross salary."""
         if self._auto_calculating:
             return
-            
+
         self._auto_calculating = True
         try:
             gross = self._get_decimal(self.txt_gross.text())
             pf_applicable = self.chk_pf.isChecked()
-            
+
             if gross <= 0:
                 QMessageBox.warning(self, "Input Required", "Please enter a Gross Salary greater than 0.")
                 return
-            
+
             # Calculate all components
             result = self.calc_service.calculate_salary_structure_from_gross(
                 gross,
@@ -247,9 +266,10 @@ class SalaryStructureDialog(QDialog):
                 self.chk_esi.isChecked(),
             )
 
-            # Auto-update ESIC applicability from basic salary threshold.
-            # If basic > 21000 then ESIC must be off.
-            auto_esi_applicable = result["basic_salary"] <= Decimal("21000")
+            # Auto-update ESIC applicability from threshold: ((Gross - PF Employer) * 50% < 21000)
+            esi_threshold_base = (gross - result["pf_employer"]) * Decimal("0.50")
+            auto_esi_applicable = esi_threshold_base < Decimal("21000")
+
             if self.chk_esi.isChecked() != auto_esi_applicable:
                 self.chk_esi.blockSignals(True)
                 self.chk_esi.setChecked(auto_esi_applicable)
@@ -259,21 +279,21 @@ class SalaryStructureDialog(QDialog):
                     pf_applicable,
                     auto_esi_applicable,
                 )
-            
+
             # Update fields
             self.txt_basic.setText(f"{result['basic_salary']:.2f}")
             self.txt_hra.setText(f"{result['hra']:.2f}")
             self.txt_bonus.setText(f"{result['bonus']:.2f}")
             self.txt_cca.setText(f"{result['cca']:.2f}")
             self.txt_other.setText(f"{result['other_allowance']:.2f}")
-            
+
             # Update info labels
             self.lbl_pf_info.setText(f"₹{result['pf_employer']:,.2f}")
             self.lbl_esi_info.setText(f"₹{result['esi_employee']:,.2f}")
-            
+
             # Update sum display
             self._update_sum_display()
-            
+
         finally:
             self._auto_calculating = False
 
@@ -287,7 +307,7 @@ class SalaryStructureDialog(QDialog):
                 pf_employer = Decimal(pf_text[1:].replace(",", ""))
             except:
                 pf_employer = Decimal("0")
-        
+
         # Saved gross includes PF Employer
         saved_gross_sum = (
             self._get_decimal(self.txt_basic.text()) +
@@ -298,7 +318,7 @@ class SalaryStructureDialog(QDialog):
             pf_employer
         )
         gross = self._get_decimal(self.txt_gross.text())
-        
+
         if gross > 0 and abs(saved_gross_sum - gross) > Decimal("1"):
             # Mismatch - show in red
             self.lbl_calculated_gross.setText(f"₹{saved_gross_sum:,.2f} ⚠️ (≠ Gross)")

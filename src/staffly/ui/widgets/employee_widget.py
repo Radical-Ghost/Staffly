@@ -25,7 +25,7 @@ from staffly.ui.dialogs.employee_dialog import EmployeeDialog
 class EmployeeWidget(QWidget):
     """
     Employee management page.
-    
+
     Features:
     - Employee list table
     - Search by name/code
@@ -64,7 +64,7 @@ class EmployeeWidget(QWidget):
         search_layout = QHBoxLayout(search_container)
         search_layout.setContentsMargins(0, 0, 0, 0)
         search_layout.setSpacing(8)
-        
+
         search_label = QLabel("Search")
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Name or code...")
@@ -82,7 +82,7 @@ class EmployeeWidget(QWidget):
         filter_layout = QHBoxLayout(filter_container)
         filter_layout.setContentsMargins(0, 0, 0, 0)
         filter_layout.setSpacing(8)
-        
+
         filter_label = QLabel("Status")
         self.status_filter = QComboBox()
         self.status_filter.addItems(["All", "Active", "Inactive"])
@@ -139,7 +139,7 @@ class EmployeeWidget(QWidget):
         table_card_layout = QVBoxLayout(table_card)
         table_card_layout.setContentsMargins(0, 0, 0, 0)
         table_card_layout.setSpacing(0)
-        
+
         self.table = QTableWidget()
         self.table.setObjectName("employeeTable")
         self.table.setColumnCount(8)
@@ -227,7 +227,7 @@ class EmployeeWidget(QWidget):
                 self.table.setItem(row, 6, QTableWidgetItem(
                     emp.date_of_joining.strftime("%d-%m-%Y")
                 ))
-                
+
                 status_item = QTableWidgetItem("Active" if emp.is_active else "Inactive")
                 status_item.setForeground(
                     Qt.darkGreen if emp.is_active else Qt.darkRed
@@ -271,15 +271,15 @@ class EmployeeWidget(QWidget):
         # Ctrl+Plus to zoom in
         zoom_in = QShortcut(QKeySequence("Ctrl++"), self)
         zoom_in.activated.connect(self._zoom_in)
-        
+
         # Ctrl+Equal (for keyboards where + needs shift)
         zoom_in2 = QShortcut(QKeySequence("Ctrl+="), self)
         zoom_in2.activated.connect(self._zoom_in)
-        
+
         # Ctrl+Minus to zoom out
         zoom_out = QShortcut(QKeySequence("Ctrl+-"), self)
         zoom_out.activated.connect(self._zoom_out)
-        
+
         # Ctrl+0 to reset zoom
         zoom_reset = QShortcut(QKeySequence("Ctrl+0"), self)
         zoom_reset.activated.connect(self._zoom_reset)
@@ -363,9 +363,20 @@ class EmployeeWidget(QWidget):
 
     def _on_edit(self):
         """Open dialog to edit selected employee."""
-        emp_id = self._get_selected_employee_id()
-        if emp_id:
-            dialog = EmployeeDialog(self, employee_id=emp_id)
+        # Use currentRow() to make selection detection bulletproof
+        row = self.table.currentRow()
+        if row < 0:
+            return
+
+        id_item = self.table.item(row, 0)
+        if id_item:
+            emp_id = int(id_item.text())
+            dialog = EmployeeDialog(
+                self,
+                employee_id=emp_id,
+                fixed_company_id=self.selected_company_id,
+                fixed_company_name=self.selected_company_name
+            )
             if dialog.exec():
                 self._load_employees()
 

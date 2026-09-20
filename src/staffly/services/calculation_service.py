@@ -27,7 +27,7 @@ def _round_rupee(value: Decimal) -> Decimal:
 class CalculationService:
     """
     Service for payroll calculations.
-    
+
     Handles:
     - Salary structure calculation from gross
     - Pro-rata salary calculations
@@ -43,11 +43,11 @@ class CalculationService:
     # ═══════════════════════════════════════════════════════════════════════════
 
     def calculate_salary_structure_from_gross(
-        self, gross_salary: Decimal, pf_applicable: bool = True, esi_applicable: bool = True
+        self, gross_salary: Decimal, pf_applicable: bool = True, esi_applicable: bool = False
     ) -> Dict[str, Decimal]:
         """
         Calculate salary structure components from CTC (gross salary).
-        
+
         Formulas (CTC = Cost to Company per month):
         - Basic = MIN(25000, CTC * 50%)
         - HRA = Basic * 40%
@@ -57,37 +57,37 @@ class CalculationService:
         - Other Allowance = CEIL(CTC - Basic - HRA - Bonus - CCA - PF (Employer))  (round up)
         - Gross Total = Basic + HRA + Bonus + CCA + Other + PF_Employer + arrears (if present)
         - PF (Employee) = PF (Employer)
-        - ESIC (Employee) = IF((Gross - PF (Employer))*50% < 21000, ROUND(Basic*50% * 0.75%), 0)
-        
+        - ESIC (Employee) = Controlled entirely by the esi_applicable boolean flag
+
         Args:
             gross_salary: The CTC per month (input)
             pf_applicable: Whether PF is applicable for this employee
             esi_applicable: Whether ESIC is applicable for this employee
-            
+
         Returns:
             Dictionary with all calculated components
         """
         import math
         ctc = _to_decimal(gross_salary)
-        
+
         # Basic Salary: MIN(25000, CTC * 50%)
         basic_50_pct = ctc * Decimal("0.50")
         basic = min(Decimal("25000"), basic_50_pct)
         basic = _round_decimal(basic)
-        
+
         # HRA: Basic * 40%
         hra = _round_decimal(basic * Decimal("0.40"))
-        
+
         # Bonus: FLOOR(Basic * 8.33%) - round down to no decimal points
         bonus_raw = basic * Decimal("0.0833")
         bonus = Decimal(str(math.floor(bonus_raw)))
-        
+
         # CCA: IF(CTC > 50000, CTC * 20%, 0)
         if ctc > Decimal("50000"):
             cca = _round_decimal(ctc * Decimal("0.20"))
         else:
             cca = Decimal("0.00")
-        
+
         # PF (Employer): IF(PF, MIN(1800, ROUND((CTC - HRA - Bonus - (CTC*8.125%)) * 12%)), 0)
         if pf_applicable:
             pf_base = ctc - hra - bonus - (ctc * Decimal("0.08125"))
@@ -95,25 +95,24 @@ class CalculationService:
             pf_employer = Decimal(str(math.floor((max(Decimal("0.00"), min(Decimal("1800"), pf_calculated))))))
         else:
             pf_employer = Decimal("0.00")
-        
+
         # Other Allowance: CEIL(CTC - Basic - HRA - Bonus - CCA - PF_Employer) - round up
         other_raw = ctc - basic - hra - bonus - cca - pf_employer
         other_allowance = Decimal(str(math.ceil(other_raw)))
-        
+
         # Gross Total (Earnings): Basic + HRA + Bonus + CCA + Other + PF_Employer
         gross_total = basic + hra + bonus + cca + other_allowance + pf_employer
         gross_total = _round_rupee(gross_total)
-        
+
         # PF (Employee): Same as PF (Employer)
         pf_employee = pf_employer
-        
-        # ESIC (Employee): IF((Gross - PF_Employer)*50% < 21000, ROUND(Basic*50% * 0.75%), 0)
-        esi_threshold_base = (gross_total - pf_employer) * Decimal("0.50")
-        if esi_applicable and esi_threshold_base < Decimal("21000"):
+
+        # ESIC (Employee): Controlled strictly by the esi_applicable parameter (allows 6-month buffer rule)
+        if esi_applicable:
             esi_employee = _round_rupee(basic * Decimal("0.0075"))
         else:
             esi_employee = Decimal("0.00")
-        
+
         return {
             "basic_salary": basic,
             "hra": hra,
@@ -131,12 +130,12 @@ class CalculationService:
     ) -> Decimal:
         """
         Calculate pro-rated amount based on paid days.
-        
+
         Formula: (monthly_amount / total_working_days) * paid_days
         """
         if total_working_days == 0:
             return Decimal("0.00")
-        
+
         daily_rate = monthly_amount / Decimal(total_working_days)
         pro_rata = daily_rate * Decimal(paid_days)
         return pro_rata.quantize(Decimal("0.01"))
@@ -178,7 +177,7 @@ class CalculationService:
     ) -> Decimal:
         """
         Calculate gross earnings with pro-rata.
-        
+
         Sums all components and applies pro-rata based on paid days.
         """
         # Convert None values to 0
@@ -188,16 +187,16 @@ class CalculationService:
         cca = _to_decimal(cca)
         other = _to_decimal(other)
         pf_employer = _to_decimal(pf_employer)
-        
+
         monthly_gross = basic + hra + bonus + cca + other + pf_employer
-        
+
         if paid_days == total_working_days:
             return monthly_gross.quantize(Decimal("0.01"))
-        
+
         return self.calculate_pro_rata_amount(monthly_gross, paid_days, total_working_days)
 
     def calculate_total_deductions(
-        self,   
+        self,
         pf_employee: Decimal,
         pf_employer: Decimal,
         esi_employee: Decimal,
@@ -245,7 +244,7 @@ class CalculationService:
         paid_days: int,
         total_working_days: int,
         pf_applicable: bool,
-        esi_applicable: bool = True,
+        esi_applicable: bool = False,
         pf_employer_monthly: Decimal | None = None,
         gender: str | None = None,
         loan_deduction: Decimal = Decimal("0.00"),
@@ -254,11 +253,11 @@ class CalculationService:
     ) -> dict:
         """
         Complete payroll calculation using updated formulas.
-        
+
         PF Formula: MIN(₹1,800, (Gross - HRA - Bonus - (Gross×8.125%)) × 12%)
-        ESIC Formula: IF((Gross - PF Employer)×50% < ₹21,000, ROUND(Basic×50% × 0.75%), 0)
+        ESIC Formula: Controlled entirely by the esi_applicable boolean flag
         Prof Tax Formula: IF(Female, IF(Gross > 24999, 200, 0), IF(Gross > 7500, 200, 0))
-        
+
         Returns a dictionary with all calculated values.
         """
         import math
@@ -294,13 +293,14 @@ class CalculationService:
         gross_earnings = _round_rupee(provisional_gross + pf_employer)
 
         # ═══════════════════════════════════════════════════════════════════
-        # ESIC Calculation: IF((Gross - PF Employer)×50% < ₹21,000, ROUND(Basic × 0.75%), 0)
+        # ESIC Calculation
         # Employer ESIC is not used in this system.
         # ═══════════════════════════════════════════════════════════════════
         esi_employee = Decimal("0.00")
         esi_employer = Decimal("0.00")
-        esi_threshold_base = (gross_earnings - pf_employer) * Decimal("0.50")
-        if esi_applicable and esi_threshold_base < Decimal("21000"):
+
+        # Uses explicit esi_applicable flag (which handles 6-month statutory buffers)
+        if esi_applicable:
             esi_employee = _round_rupee(pro_rated_basic * Decimal("0.0075"))
 
         # ═══════════════════════════════════════════════════════════════════
@@ -341,19 +341,19 @@ class CalculationService:
     ) -> Decimal:
         """
         Calculate professional tax based on gender and gross salary.
-        
+
         Formula:
         - IF(Female, IF(Gross > 24999, 200, 0), IF(Gross > 7500, 200, 0))
-        
+
         Args:
             gross_salary: The gross salary for the month
             gender: Employee's gender ('Male', 'Female', 'Other', or None)
-        
+
         Returns:
             Professional tax amount (₹200 or ₹0)
         """
         gross = _to_decimal(gross_salary)
-        
+
         if gender and gender.lower() == "female":
             # Female: PT applicable only if Gross > 24999
             if gross > Decimal("24999"):

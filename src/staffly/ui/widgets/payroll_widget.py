@@ -72,7 +72,7 @@ class CurrencyEditDelegate(QStyledItemDelegate):
 class PayrollWidget(QWidget):
     """
     Payroll management widget showing salary calculations.
-    
+
     Features:
     - View salary breakdown for each employee
     - Edit only Loan and TDS
@@ -369,6 +369,7 @@ class PayrollWidget(QWidget):
             period_repo = PayrollPeriodRepository(session)
             payroll_repo = MonthlyPayrollRepository(session)
             salary_repo = SalaryStructureRepository(session)
+            service = PayrollService(session)
 
             period = period_repo.get_by_id(period_id)
             payrolls = payroll_repo.get_all_for_period_and_company(period_id, self.selected_company_id)
@@ -398,7 +399,15 @@ class PayrollWidget(QWidget):
                 # Get salary structure for PF/ESIC applicability
                 salary_struct = salary_repo.get_active_for_employee(emp.id, period.start_date)
                 pf_applicable = "Y" if (salary_struct and salary_struct.pf_applicable) else "N"
-                esic_applicable = "Y" if (salary_struct and salary_struct.esi_applicable) else "N"
+
+                # Evaluate ESIC with the 6-month buffer rule
+                struct_esi = salary_struct.esi_applicable if salary_struct else False
+                actual_esi = service._check_esic_buffer_rule(emp, period, salary_struct)
+
+                if actual_esi and not struct_esi:
+                    esic_applicable = "Y (Buffer)"
+                else:
+                    esic_applicable = "Y" if actual_esi else "N"
 
                 # ID (hidden)
                 self._set_readonly_item(row, self.COL_ID, str(payroll.id))

@@ -32,9 +32,9 @@ class LeaveBalanceRepository(BaseRepository[LeaveBalance]):
             balance = LeaveBalance(
                 employee_id=employee_id,
                 financial_year=financial_year,
-                pl_entitlement=Decimal("7.0"),
-                sl_entitlement=Decimal("7.0"),
-                cl_entitlement=Decimal("7.0"),
+                pl_entitlement=Decimal("0.0"),
+                sl_entitlement=Decimal("0.0"),
+                cl_entitlement=Decimal("0.0"),
                 pl_used=Decimal("0.0"),
                 sl_used=Decimal("0.0"),
                 cl_used=Decimal("0.0"),
@@ -53,7 +53,7 @@ class LeaveBalanceRepository(BaseRepository[LeaveBalance]):
     ) -> LeaveBalance:
         """
         Recalculate leave usage from monthly payroll records for a financial year.
-        
+
         Financial year runs April (fy_year) to March (fy_year+1).
         Sums PL, SL, CL from all monthly payroll records in that range.
         """

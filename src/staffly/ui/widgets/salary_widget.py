@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QGroupBox,
     QSizePolicy,
+    QComboBox
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QShortcut, QKeySequence
@@ -20,17 +21,16 @@ from PySide6.QtGui import QShortcut, QKeySequence
 from staffly.database import get_db
 from staffly.database.repositories import EmployeeRepository, SalaryStructureRepository
 from staffly.ui.dialogs.salary_structure_dialog import SalaryStructureDialog
-from PySide6.QtWidgets import QComboBox
 
 
 class SalaryWidget(QWidget):
     """
     Salary structure management page.
-    
+
     Features:
     - Employee selector dropdown
     - Salary structure history for selected employee
-    - Add, Edit salary structure
+    - Add, Edit, Delete salary structure
     - Ctrl+Scroll or Ctrl+Plus/Minus to zoom table
     """
 
@@ -65,6 +65,10 @@ class SalaryWidget(QWidget):
         self.employee_combo.setMinimumWidth(300)
         self.employee_combo.currentIndexChanged.connect(self._on_employee_changed)
 
+        self.lbl_probation_alert = QLabel("⚠️ ON PROBATION")
+        self.lbl_probation_alert.setStyleSheet("color: #E65100; background-color: #FFF3E0; font-weight: bold; padding: 4px 8px; border-radius: 4px;")
+        self.lbl_probation_alert.setVisible(False)
+
         scope_label = QLabel(f"{self.selected_company_name}")
         scope_label.setObjectName("badge")
 
@@ -82,6 +86,13 @@ class SalaryWidget(QWidget):
         self.btn_edit.clicked.connect(self._on_edit)
         self.btn_edit.setEnabled(False)
 
+        self.btn_delete = QPushButton("Delete Selected")
+        self.btn_delete.setObjectName("dangerButton")
+        self.btn_delete.setFixedHeight(40)
+        self.btn_delete.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_delete.clicked.connect(self._on_delete)
+        self.btn_delete.setEnabled(False)
+
         self.btn_refresh = QPushButton("Refresh")
         self.btn_refresh.setObjectName("secondaryButton")
         self.btn_refresh.setFixedHeight(40)
@@ -90,10 +101,12 @@ class SalaryWidget(QWidget):
 
         top_card_layout.addWidget(selector_label)
         top_card_layout.addWidget(self.employee_combo)
+        top_card_layout.addWidget(self.lbl_probation_alert)
         top_card_layout.addWidget(scope_label)
         top_card_layout.addStretch()
         top_card_layout.addWidget(self.btn_add)
         top_card_layout.addWidget(self.btn_edit)
+        top_card_layout.addWidget(self.btn_delete)
         top_card_layout.addWidget(self.btn_refresh)
 
         layout.addWidget(top_card)
@@ -180,10 +193,18 @@ class SalaryWidget(QWidget):
         self.table.setRowCount(0)
 
         if not employee_id:
+            self.lbl_probation_alert.setVisible(False)
             return
 
         db = get_db()
         with db.get_session() as session:
+            emp_repo = EmployeeRepository(session)
+            emp = emp_repo.get_by_id(employee_id)
+            if emp and getattr(emp, 'is_on_probation', False):
+                self.lbl_probation_alert.setVisible(True)
+            else:
+                self.lbl_probation_alert.setVisible(False)
+
             repo = SalaryStructureRepository(session)
             structures = repo.get_by_employee_id(employee_id)
 
@@ -217,12 +238,12 @@ class SalaryWidget(QWidget):
         """Handle table selection change."""
         has_selection = len(self.table.selectedItems()) > 0
         self.btn_edit.setEnabled(has_selection)
+        self.btn_delete.setEnabled(has_selection)
 
     def _get_selected_structure_id(self) -> int | None:
-        """Get the ID of the selected salary structure."""
-        selected = self.table.selectedItems()
-        if selected:
-            row = selected[0].row()
+        """Get the ID of the selected salary structure using currentRow."""
+        row = self.table.currentRow()
+        if row >= 0:
             id_item = self.table.item(row, 0)
             if id_item:
                 return int(id_item.text())
@@ -244,6 +265,35 @@ class SalaryWidget(QWidget):
             dialog = SalaryStructureDialog(self, employee_id=emp_id, structure_id=struct_id)
             if dialog.exec():
                 self._load_salary_structures(emp_id)
+
+    def _on_delete(self):
+        """Delete the selected salary structure."""
+        struct_id = self._get_selected_structure_id()
+        emp_id = self.employee_combo.currentData()
+
+        if not struct_id or not emp_id:
+            return
+
+        reply = QMessageBox.warning(
+            self,
+            "Delete Salary Structure",
+            "Are you sure you want to delete this salary structure?\n\n"
+            "This action cannot be undone.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                db = get_db()
+                with db.get_session() as session:
+                    repo = SalaryStructureRepository(session)
+                    repo.delete_by_id(struct_id)
+                    session.commit()
+
+                self._load_salary_structures(emp_id)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to delete salary structure:\n{str(e)}")
 
     def _setup_zoom_shortcuts(self):
         """Setup keyboard shortcuts for zooming."""

@@ -4,11 +4,11 @@ Supports Catppuccin Mocha (dark) and Catppuccin Latte (light) themes.
 
 Usage:
     from staffly.ui.theme import load_theme, get_current_theme, ThemeMode
-    
+
     # Load a theme (applies globally)
     load_theme("mocha")  # Dark theme
     load_theme("latte")  # Light theme
-    
+
     # Get current theme info
     mode = get_current_theme()  # Returns "mocha" or "latte"
 """
@@ -47,11 +47,11 @@ class ThemeColors:
     text_secondary: str
     border: str
     overlay: str
-    
+
     # Accent colors
     primary: str
     primary_hover: str
-    
+
     # Status colors
     success: str
     danger: str
@@ -109,27 +109,27 @@ CATPPUCCIN_LATTE = ThemeColors(
 class ThemeManager:
     """
     Singleton class to manage application theming.
-    
+
     Loads QSS files and applies them globally via QApplication.setStyleSheet().
     """
-    
+
     _instance: Optional["ThemeManager"] = None
     _current_mode: ThemeMode = ThemeMode.MOCHA
     _settings: QSettings
     _initialized: bool = False
-    
+
     def __new__(cls) -> "ThemeManager":
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
-    
+
     def __init__(self):
         if self._initialized:
             return
         self._initialized = True
         self._settings = QSettings("Staffly", "Staffly")
         self._load_saved_theme()
-    
+
     def _load_saved_theme(self) -> None:
         """Load saved theme preference from settings."""
         saved = self._settings.value("theme/mode", "mocha")
@@ -137,91 +137,195 @@ class ThemeManager:
             self._current_mode = ThemeMode.LATTE
         else:
             self._current_mode = ThemeMode.MOCHA
-    
+
     def _save_theme(self) -> None:
         """Save current theme preference to settings."""
         self._settings.setValue("theme/mode", self._current_mode.value)
         self._settings.sync()
-    
+
     @property
     def mode(self) -> ThemeMode:
         """Get current theme mode."""
         return self._current_mode
-    
+
     @property
     def colors(self) -> ThemeColors:
         """Get current theme colors."""
         if self._current_mode == ThemeMode.LATTE:
             return CATPPUCCIN_LATTE
         return CATPPUCCIN_MOCHA
-    
+
     @property
     def is_dark(self) -> bool:
         """Check if dark theme is active."""
         return self._current_mode == ThemeMode.MOCHA
-    
+
     def _get_styles_dir(self) -> Path:
         """Get the path to the styles directory."""
         return _get_base_dir() / "styles"
-    
-    def _get_icons_dir(self) -> Path:
-        """Get the path to the icons directory."""
-        return _get_base_dir() / "icons"
-    
+
     def _load_qss_file(self, theme_name: str) -> str:
         """Load QSS file content for the given theme."""
         qss_file = self._get_styles_dir() / f"catppuccin_{theme_name}.qss"
-        
+
         if not qss_file.exists():
-            print(f"Warning: Theme file not found: {qss_file}")
             return ""
-        
+
         with open(qss_file, "r", encoding="utf-8") as f:
             return f.read()
-    
+
     def _process_stylesheet(self, qss: str) -> str:
-        """Process stylesheet and replace icon path placeholders."""
-        icons_dir = self._get_icons_dir()
-        
-        # Replace icon placeholders with actual paths
-        # For mocha (dark theme), use light colored chevron
-        # For latte (light theme), use dark colored chevron
-        if self._current_mode == ThemeMode.MOCHA:
-            chevron_path = (icons_dir / "chevron-down.svg").as_posix()
-        else:
-            chevron_path = (icons_dir / "chevron-down-dark.svg").as_posix()
-        
-        qss = qss.replace("url(chevron-down.svg)", f'url("{chevron_path}")')
-        qss = qss.replace("url(chevron-down-dark.svg)", f'url("{chevron_path}")')
-        
-        return qss
-    
+        """Process stylesheet and inject robust native UI fixes."""
+        c = self.colors
+
+        # Prevent terminal warnings about missing SVGs from the base QSS
+        qss = qss.replace("url(chevron-down.svg)", "none")
+        qss = qss.replace("url(chevron-down-dark.svg)", "none")
+
+        supplementary_fixes = f"""
+        /* ═══════════════════════════════════════════════════════════════
+           DROPDOWN ARROWS (ComboBox & DateEdit)
+           ═══════════════════════════════════════════════════════════════ */
+
+        QComboBox:focus, QDateEdit:focus {{
+            border: 2px solid {c.primary};
+        }}
+
+        /* ═══════════════════════════════════════════════════════════════
+           CALENDAR WIDGET REWRITE
+           ═══════════════════════════════════════════════════════════════ */
+
+        QCalendarWidget {{
+            background-color: {c.background};
+            border: 1px solid {c.border};
+            border-radius: 8px;
+        }}
+
+        /* Top Navigation Bar */
+        QCalendarWidget QWidget#qt_calendar_navigationbar {{
+            background-color: {c.surface};
+            border-bottom: 1px solid {c.border};
+            min-height: 44px;
+        }}
+
+        /* Month/Year Buttons */
+        QCalendarWidget QToolButton {{
+            background-color: transparent;
+            color: {c.text_primary};
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            margin: 2px;
+            font-weight: bold;
+            font-size: 14px;
+        }}
+
+        QCalendarWidget QToolButton:hover {{
+            background-color: {c.surface_alt};
+        }}
+
+        QCalendarWidget QToolButton::menu-indicator {{
+            image: none; /* Strip the glitchy arrow */
+        }}
+
+        /* Year Spinbox */
+        QCalendarWidget QSpinBox {{
+            background-color: transparent;
+            color: {c.text_primary};
+            border: none;
+            font-size: 14px;
+            font-weight: bold;
+        }}
+        QCalendarWidget QSpinBox::up-button, QCalendarWidget QSpinBox::down-button {{
+            width: 0px;
+            border: none;
+        }}
+
+        /* Calendar Table Grid */
+        QCalendarWidget QTableView {{
+            background-color: {c.background};
+            alternate-background-color: {c.background};
+            selection-background-color: {c.primary};
+            selection-color: {c.background};
+            font-size: 13px;
+            outline: none;
+            border: none;
+        }}
+
+        /* Day Headers (Mon, Tue, etc.) */
+        QCalendarWidget QHeaderView::section {{
+            background-color: {c.background};
+            color: {c.text_secondary};
+            border: none;
+            font-weight: bold;
+            padding: 6px;
+        }}
+
+        /* Fix the weird artifact on selected columns */
+        QCalendarWidget QHeaderView::section:checked {{
+            background-color: transparent;
+            color: {c.text_primary};
+        }}
+
+        /* Day Cells */
+        QCalendarWidget QTableView::item {{
+            color: {c.text_primary};
+            border-radius: 4px;
+            padding: 4px;
+        }}
+
+        QCalendarWidget QTableView::item:selected {{
+            background-color: {c.primary};
+            color: {c.background};
+            font-weight: bold;
+            border-radius: 4px;
+        }}
+
+        QCalendarWidget QTableView::item:hover {{
+            background-color: {c.surface_alt};
+            border-radius: 4px;
+        }}
+
+        /* Fix Popup Menus for Calendar */
+        QCalendarWidget QMenu {{
+            background-color: {c.surface};
+            color: {c.text_primary};
+            border: 1px solid {c.border};
+        }}
+        QCalendarWidget QMenu::item:selected {{
+            background-color: {c.primary};
+            color: {c.background};
+        }}
+        """
+
+        return qss + supplementary_fixes
+
     def apply_theme(self, mode: ThemeMode) -> None:
         """
         Apply a theme to the entire application.
-        
+
         Args:
             mode: ThemeMode.MOCHA or ThemeMode.LATTE
         """
         self._current_mode = mode
         self._save_theme()
-        
+
         # Load and process the QSS file
         qss = self._load_qss_file(mode.value)
         qss = self._process_stylesheet(qss)
-        
+
         # Apply globally to the application
         app = QApplication.instance()
         if app:
             app.setStyleSheet(qss)
-    
+
     def toggle_theme(self) -> None:
         """Toggle between dark (mocha) and light (latte) themes."""
         if self._current_mode == ThemeMode.MOCHA:
             self.apply_theme(ThemeMode.LATTE)
         else:
             self.apply_theme(ThemeMode.MOCHA)
-    
+
     def get_stylesheet(self) -> str:
         """
         Get the current theme stylesheet.
@@ -241,7 +345,7 @@ _theme_manager: Optional[ThemeManager] = None
 def get_theme() -> ThemeManager:
     """
     Get the global ThemeManager instance.
-    
+
     Returns:
         ThemeManager: The singleton theme manager instance.
     """
@@ -254,16 +358,16 @@ def get_theme() -> ThemeManager:
 def load_theme(theme: str) -> None:
     """
     Load and apply a theme globally.
-    
+
     Args:
         theme: Theme name - "mocha" for dark, "latte" for light
-    
+
     Example:
         load_theme("mocha")  # Apply dark theme
         load_theme("latte")  # Apply light theme
     """
     manager = get_theme()
-    
+
     if theme.lower() == "latte":
         manager.apply_theme(ThemeMode.LATTE)
     else:
@@ -273,7 +377,7 @@ def load_theme(theme: str) -> None:
 def get_current_theme() -> str:
     """
     Get the name of the currently active theme.
-    
+
     Returns:
         str: "mocha" or "latte"
     """
@@ -283,7 +387,7 @@ def get_current_theme() -> str:
 def get_theme_colors() -> ThemeColors:
     """
     Get the color palette for the current theme.
-    
+
     Returns:
         ThemeColors: Current theme color definitions
     """
@@ -298,7 +402,7 @@ def toggle_theme() -> None:
 def is_dark_theme() -> bool:
     """
     Check if the dark theme is currently active.
-    
+
     Returns:
         bool: True if dark (mocha) theme is active
     """

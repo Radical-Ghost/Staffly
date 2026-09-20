@@ -26,11 +26,11 @@ from staffly.ui.widgets.arrow_widgets import ArrowDateEdit, OptionalDateEdit
 class EmployeeDialog(QDialog):
     """
     Dialog for adding/editing employee.
-    
+
     Usage:
         # Add new
         dialog = EmployeeDialog(parent)
-        
+
         # Edit existing
         dialog = EmployeeDialog(parent, employee_id=5)
     """
@@ -48,7 +48,7 @@ class EmployeeDialog(QDialog):
         self.fixed_company_id = fixed_company_id
         self.fixed_company_name = fixed_company_name
         self._setup_ui()
-        
+
         if self.is_edit_mode:
             self._load_employee()
 
@@ -142,6 +142,26 @@ class EmployeeDialog(QDialog):
         self.chk_active.setChecked(True)
         emp_layout.addRow("Status:", self.chk_active)
 
+        # Probation fields
+        self.chk_probation = QCheckBox("Employee is on probation")
+        self.chk_probation.setChecked(False)
+        self.chk_probation.toggled.connect(self._on_probation_toggled)
+        emp_layout.addRow("Probation:", self.chk_probation)
+
+        self.date_probation_end = ArrowDateEdit()
+        self.date_probation_end.setDisplayFormat("dd-MM-yyyy")
+        self.date_probation_end.setEnabled(False)
+        emp_layout.addRow("Probation End Date:", self.date_probation_end)
+
+        self.btn_end_probation = QPushButton("🎓 End Probation & Update Salary")
+        self.btn_end_probation.setStyleSheet("background-color: #9C27B0; color: white; font-weight: bold; padding: 6px; border-radius: 4px;")
+        self.btn_end_probation.setVisible(False)
+        self.btn_end_probation.clicked.connect(self._on_end_probation)
+        emp_layout.addRow("", self.btn_end_probation)
+
+        # Auto-calculate probation end date on joining date change
+        self.date_joining.dateChanged.connect(self._auto_set_probation_end)
+
         tab_widget.addTab(emp_tab, "Employment")
 
         # ═══════════════════════════════════════════════════════════════════
@@ -224,6 +244,46 @@ class EmployeeDialog(QDialog):
             for company in companies:
                 self.cmb_company.addItem(company.name, company.id)
 
+    def _on_probation_toggled(self, checked: bool):
+        """Toggle probation end date field based on checkbox."""
+        self.date_probation_end.setEnabled(checked)
+        if checked and self.date_probation_end.date() <= self.date_joining.date():
+            self._auto_set_probation_end(self.date_joining.date())
+
+    def _auto_set_probation_end(self, joining_date: QDate):
+        """Automatically set probation end date to 6 months after joining."""
+        if self.chk_probation.isChecked():
+            self.date_probation_end.setDate(joining_date.addMonths(6))
+
+    def _on_end_probation(self):
+        """Handle manual early end of probation."""
+        if not self._validate():
+            return
+
+        reply = QMessageBox.question(
+            self, "End Probation",
+            "Are you sure you want to end this employee's probation now?\n\n"
+            "This will uncheck the probation status, save the employee, and prompt you to create a new confirmation salary structure.",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            # CAPTURE THE DATE BEFORE SAVING/CLOSING
+            probation_end = self.date_probation_end.date()
+
+            # Snap to the 1st of the NEXT month
+            target_effective_date = QDate(probation_end.year(), probation_end.month(), 1).addMonths(1)
+
+            self.chk_probation.setChecked(False)
+            self._on_save()
+
+            from staffly.ui.dialogs.salary_structure_dialog import SalaryStructureDialog
+            sal_dialog = SalaryStructureDialog(self.parentWidget(), employee_id=self.employee_id)
+
+            # Inject the calculated start date (User can still edit it manually in the UI)
+            sal_dialog.date_from.setDate(target_effective_date)
+
+            sal_dialog.exec()
+
     def _load_employee(self):
         """Load employee data into form."""
         db = get_db()
@@ -241,12 +301,12 @@ class EmployeeDialog(QDialog):
                 self.txt_first_name.setText(emp.first_name)
                 self.txt_middle_name.setText(emp.middle_name or "")
                 self.txt_last_name.setText(emp.last_name)
-                
+
                 # Set gender
                 gender_idx = self.cmb_gender.findData(emp.gender)
                 if gender_idx >= 0:
                     self.cmb_gender.setCurrentIndex(gender_idx)
-                
+
                 self.txt_designation.setText(emp.designation)
                 self.txt_department.setText(emp.department or "")
                 self.txt_branch.setText(emp.branch or "")
@@ -258,6 +318,18 @@ class EmployeeDialog(QDialog):
                 self.txt_uan.setText(emp.uan_number or "")
                 self.txt_esi.setText(emp.esi_number or "")
                 self.chk_active.setChecked(emp.is_active)
+
+                self.chk_probation.setChecked(emp.is_on_probation)
+                if emp.probation_end_date:
+                    self.date_probation_end.setDate(QDate(
+                        emp.probation_end_date.year,
+                        emp.probation_end_date.month,
+                        emp.probation_end_date.day
+                    ))
+
+                # Show End Probation button if in edit mode and currently on probation
+                if self.is_edit_mode and emp.is_on_probation:
+                    self.btn_end_probation.setVisible(True)
 
                 self.date_joining.setDate(QDate(
                     emp.date_of_joining.year,
@@ -369,6 +441,13 @@ class EmployeeDialog(QDialog):
             emp.uan_number = "NA" if uan_text.upper() == "NA" else uan_text
             emp.esi_number = "NA" if esi_text.upper() == "NA" else esi_text
             emp.is_active = self.chk_active.isChecked()
+
+            emp.is_on_probation = self.chk_probation.isChecked()
+            if self.chk_probation.isChecked():
+                qdate_prob = self.date_probation_end.date()
+                emp.probation_end_date = date(qdate_prob.year(), qdate_prob.month(), qdate_prob.day())
+            else:
+                emp.probation_end_date = None
 
             # Dates
             qdate = self.date_joining.date()

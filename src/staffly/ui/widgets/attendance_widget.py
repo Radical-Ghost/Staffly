@@ -72,7 +72,7 @@ class AttendanceWidget(QWidget):
     COLUMNS = [
         ("ID", 50, False, 0),
         ("Emp Code", 120, False, 0),
-        ("Name", 160, False, 0),
+        ("Name", 220, False, 0),  # Widened to fit probation badge
         ("Total Days", 110, False, 0),
         ("Paid", 100, False, 0),
         ("Present", 100, False, 0),
@@ -221,7 +221,7 @@ class AttendanceWidget(QWidget):
         legend_layout.setContentsMargins(16, 8, 16, 8)
 
         legend_layout.addStretch()
-        legend_layout.addWidget(QLabel("Editable: PL, SL, CL, Absent, Late"))
+        legend_layout.addWidget(QLabel("Editable: PL, SL, CL, Absent, Late. (Leaves disabled during Probation)"))
 
         layout.addWidget(legend_card)
 
@@ -344,6 +344,7 @@ class AttendanceWidget(QWidget):
             period_repo = PayrollPeriodRepository(session)
             payroll_repo = MonthlyPayrollRepository(session)
             leave_repo = LeaveBalanceRepository(session)
+            service = PayrollService(session)
 
             period = period_repo.get_by_id(period_id)
             if not period:
@@ -379,19 +380,49 @@ class AttendanceWidget(QWidget):
                 # ID (hidden)
                 self._set_readonly_item(row, self.COL_ID, str(payroll.id))
 
+                # Assess Probation status to UI layout
+                is_probation_active = service._is_probation_active_for_period(emp, period)
+
+                # Format Name with Alert if probation ends this period
+                display_name = emp.full_name
+                if not is_probation_active and getattr(emp, 'is_on_probation', False) and emp.probation_end_date:
+                    display_name = f"{emp.full_name}  (Probation Ends)"
+                elif is_probation_active:
+                    display_name = f"{emp.full_name}  (Probation)"
+
                 # Employee info
                 self._set_readonly_item(row, self.COL_EMP_CODE, emp.employee_code or "")
-                self._set_readonly_item(row, self.COL_NAME, emp.full_name)
+                self._set_readonly_item(row, self.COL_NAME, display_name)
+
+                # Highlight the name cell if alert is present
+                if "(Probation Ends)" in display_name:
+                    item = self.table.item(row, self.COL_NAME)
+                    item.setForeground(QBrush(QColor("#d20f39"))) # Red warning text
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
+                elif "(Probation)" in display_name:
+                    item = self.table.item(row, self.COL_NAME)
+                    item.setForeground(QBrush(QColor("#E65100"))) # Orange warning text
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
 
                 # Attendance summary
                 self._set_readonly_item(row, self.COL_TOTAL_DAYS, str(period.working_days))
                 self._set_readonly_item(row, self.COL_PAID, str(payroll.paid_days))
                 self._set_readonly_item(row, self.COL_PRESENT, str(payroll.present_days))
 
-                # Editable attendance fields
-                self._set_editable_item(row, self.COL_PL, f"{float(payroll.privilege_leave or 0):.1f}")
-                self._set_editable_item(row, self.COL_SL, f"{float(payroll.sick_leave or 0):.1f}")
-                self._set_editable_item(row, self.COL_CL, f"{float(payroll.casual_leave or 0):.1f}")
+                # Editable attendance fields - LOCK leaves if on probation
+                if is_probation_active:
+                    self._set_readonly_item(row, self.COL_PL, "0.0")
+                    self._set_readonly_item(row, self.COL_SL, "0.0")
+                    self._set_readonly_item(row, self.COL_CL, "0.0")
+                else:
+                    self._set_editable_item(row, self.COL_PL, f"{float(payroll.privilege_leave or 0):.1f}")
+                    self._set_editable_item(row, self.COL_SL, f"{float(payroll.sick_leave or 0):.1f}")
+                    self._set_editable_item(row, self.COL_CL, f"{float(payroll.casual_leave or 0):.1f}")
+
                 self._set_editable_item(row, self.COL_ABSENT, f"{float(payroll.absent_days or 0):.1f}")
                 self._set_editable_item(row, self.COL_LATE, f"{float(payroll.late_marks or 0):.1f}")
 
@@ -456,69 +487,6 @@ class AttendanceWidget(QWidget):
         except ValueError:
             value = 0.0
 
-        # Apply leave overflow logic for PL, SL, CL columns
-        if col in [self.COL_PL, self.COL_SL, self.COL_CL] and value > 7:
-            overflow = value - 7
-            value = 7.0  # Cap the original leave
-
-            # Update the current cell to show capped value
-            self._is_loading = True
-            item.setText(f"{value:.1f}")
-            self._is_loading = False
-
-            # Get current values for other leaves
-            pl_val = float(self.table.item(row, self.COL_PL).text() or 0) if col != self.COL_PL else value
-            sl_val = float(self.table.item(row, self.COL_SL).text() or 0) if col != self.COL_SL else value
-            cl_val = float(self.table.item(row, self.COL_CL).text() or 0) if col != self.COL_CL else value
-            absent_val = float(self.table.item(row, self.COL_ABSENT).text() or 0)
-
-            # Determine order of redistribution (skip the current leave type)
-            redistrib_order = []
-            if col == self.COL_PL:
-                redistrib_order = [(self.COL_SL, sl_val), (self.COL_CL, cl_val)]
-            elif col == self.COL_SL:
-                redistrib_order = [(self.COL_PL, pl_val), (self.COL_CL, cl_val)]
-            else:  # COL_CL
-                redistrib_order = [(self.COL_PL, pl_val), (self.COL_SL, sl_val)]
-
-            # Try to redistribute overflow to other leaves (up to 7 each)
-            self._is_loading = True
-            for leave_col, current_leave_val in redistrib_order:
-                if overflow <= 0:
-                    break
-                room = 7 - current_leave_val
-                if room > 0:
-                    add_amount = min(room, overflow)
-                    new_leave_val = current_leave_val + add_amount
-                    overflow -= add_amount
-                    self.table.item(row, leave_col).setText(f"{new_leave_val:.1f}")
-
-                    # Store in pending changes
-                    leave_field_map = {
-                        self.COL_PL: "privilege_leave",
-                        self.COL_SL: "sick_leave",
-                        self.COL_CL: "casual_leave",
-                    }
-                    if payroll_id not in self._pending_changes:
-                        self._pending_changes[payroll_id] = {}
-                    self._pending_changes[payroll_id][leave_field_map[leave_col]] = new_leave_val
-
-            # Any remaining overflow goes to absent (capped at total_days - all_leaves)
-            if overflow > 0:
-                # Get final leave values after redistribution
-                final_pl = float(self.table.item(row, self.COL_PL).text() or 0)
-                final_sl = float(self.table.item(row, self.COL_SL).text() or 0)
-                final_cl = float(self.table.item(row, self.COL_CL).text() or 0)
-                total_days = float(self.table.item(row, self.COL_TOTAL_DAYS).text() or 0)
-                absent_max = max(0.0, total_days - final_pl - final_sl - final_cl)
-                absent_val = min(absent_val + overflow, absent_max)
-                self.table.item(row, self.COL_ABSENT).setText(f"{absent_val:.1f}")
-                if payroll_id not in self._pending_changes:
-                    self._pending_changes[payroll_id] = {}
-                self._pending_changes[payroll_id]["absent_days"] = absent_val
-
-            self._is_loading = False
-
         # For direct absent edits, clamp to total_days - pl - sl - cl
         if col == self.COL_ABSENT:
             pl = float(self.table.item(row, self.COL_PL).text() or 0)
@@ -574,7 +542,7 @@ class AttendanceWidget(QWidget):
                     for field, value in changes.items():
                         setattr(payroll, field, Decimal(str(value)))
 
-                    # Recalculate payroll
+                    # Recalculate payroll (this pushes to the dynamic engine in the backend)
                     service.recalculate_payroll(payroll_id)
                     payroll = payroll_repo.get_by_id(payroll_id)
 
@@ -617,7 +585,7 @@ class AttendanceWidget(QWidget):
 
                 session.commit()
 
-            # Update UI
+            # Update UI (this pushes the backend dynamic redirect math back to the screen)
             self._is_loading = True
             for row, data in ui_updates.items():
                 self._update_cell(row, self.COL_PAID, str(data["paid_days"]))
@@ -879,14 +847,3 @@ class AttendanceWidget(QWidget):
                 return True
 
         return super().eventFilter(obj, event)
-
-    def wheelEvent(self, event):
-        """Handle mouse wheel for zooming with Ctrl key."""
-        if event.modifiers() == Qt.ControlModifier:
-            if event.angleDelta().y() > 0:
-                self._zoom_in()
-            else:
-                self._zoom_out()
-            event.accept()
-        else:
-            super().wheelEvent(event)

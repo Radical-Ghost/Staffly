@@ -1,75 +1,77 @@
 """Custom widgets with visible arrow indicators."""
 
 from PySide6.QtWidgets import QComboBox, QDateEdit, QWidget, QHBoxLayout, QCheckBox
-from PySide6.QtGui import QPainter, QColor, QPolygon
-from PySide6.QtCore import Qt, QPoint, QDate, Signal
+from PySide6.QtGui import QPainter, QPen
+from PySide6.QtCore import Qt, QDate, Signal
 
 
 class ArrowComboBox(QComboBox):
-    """ComboBox with a visible triangle arrow indicator."""
+    """ComboBox with a natively drawn chevron indicator."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
-    
+
     def paintEvent(self, event):
         super().paintEvent(event)
-        self._draw_arrow()
-    
-    def _draw_arrow(self):
-        """Draw triangle arrow on the right side."""
+        self._draw_chevron()
+        
+    def _draw_chevron(self):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # Arrow position - centered in the dropdown area
-        arrow_x = self.width() - 15
-        arrow_y = self.height() // 2
+        # Auto-adapt color to Light/Dark mode
+        color = self.palette().color(self.foregroundRole())
+        color.setAlpha(150) 
         
-        # Draw triangle (pointing down)
-        arrow_color = QColor("#aeb3d4")  # Light color for visibility
-        painter.setBrush(arrow_color)
-        painter.setPen(Qt.NoPen)
+        pen = QPen(color)
+        pen.setWidth(2)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        painter.setPen(pen)
         
-        triangle = QPolygon([
-            QPoint(arrow_x - 5, arrow_y - 3),
-            QPoint(arrow_x + 5, arrow_y - 3),
-            QPoint(arrow_x, arrow_y + 4),
-        ])
-        painter.drawPolygon(triangle)
+        # Position right side, vertically centered
+        x = self.width() - 22
+        y = self.height() // 2
+        
+        # Draw chevron '\/'
+        painter.drawLine(x, y - 2, x + 5, y + 3)
+        painter.drawLine(x + 5, y + 3, x + 10, y - 2)
         painter.end()
 
 
 class ArrowDateEdit(QDateEdit):
-    """DateEdit with a visible triangle arrow indicator and working calendar."""
+    """DateEdit with a natively drawn chevron indicator and working calendar."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setCalendarPopup(True)
         self.setDisplayFormat("dd-MM-yyyy")
-        
+
     def paintEvent(self, event):
         super().paintEvent(event)
-        self._draw_arrow()
-    
-    def _draw_arrow(self):
-        """Draw triangle arrow on the right side."""
+        self._draw_chevron()
+        
+    def _draw_chevron(self):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # Arrow position - centered in the dropdown area
-        arrow_x = self.width() - 15
-        arrow_y = self.height() // 2
+        # Auto-adapt color to Light/Dark mode
+        color = self.palette().color(self.foregroundRole())
+        color.setAlpha(150) 
         
-        # Draw triangle (pointing down)
-        arrow_color = QColor("#aeb3d4")  # Light color for visibility
-        painter.setBrush(arrow_color)
-        painter.setPen(Qt.NoPen)
+        pen = QPen(color)
+        pen.setWidth(2)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        painter.setPen(pen)
         
-        triangle = QPolygon([
-            QPoint(arrow_x - 5, arrow_y - 3),
-            QPoint(arrow_x + 5, arrow_y - 3),
-            QPoint(arrow_x, arrow_y + 4),
-        ])
-        painter.drawPolygon(triangle)
+        # Position right side, vertically centered
+        x = self.width() - 22
+        y = self.height() // 2
+        
+        # Draw chevron '\/'
+        painter.drawLine(x, y - 2, x + 5, y + 3)
+        painter.drawLine(x + 5, y + 3, x + 10, y - 2)
         painter.end()
 
 

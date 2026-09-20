@@ -72,6 +72,10 @@ class Employee(BaseModel):
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    # Probation
+    is_on_probation: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    probation_end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
     # Relationships
     company: Mapped["Company"] = relationship("Company", back_populates="employees")
     salary_structures: Mapped[list["SalaryStructure"]] = relationship(

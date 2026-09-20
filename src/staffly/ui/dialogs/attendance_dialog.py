@@ -206,6 +206,15 @@ class AttendanceDialog(QDialog):
 
                 self._update_calculated(payroll)
 
+                # Restrict leaves if on probation
+                if payroll.employee.is_on_probation:
+                    self.spin_pl.setEnabled(False)
+                    self.spin_sl.setEnabled(False)
+                    self.spin_cl.setEnabled(False)
+                    self.spin_pl.setToolTip("Leaves are disabled during probation.")
+                    self.spin_sl.setToolTip("Leaves are disabled during probation.")
+                    self.spin_cl.setToolTip("Leaves are disabled during probation.")
+
                 # Store working days for validation
                 self._working_days = payroll.payroll_period.working_days
 

@@ -255,14 +255,15 @@ class EndeeTemplate(BaseSlipTemplate):
         pl_adj = f"{float(payroll.privilege_leave or 0):.1f}"
         sl_adj = f"{float(payroll.sick_leave     or 0):.1f}"
         cl_adj = f"{float(payroll.casual_leave   or 0):.1f}"
+
         if leave_balance is not None:
             pl_bal = f"{float(leave_balance.pl_balance):.1f}"
             sl_bal = f"{float(leave_balance.sl_balance):.1f}"
             cl_bal = f"{float(leave_balance.cl_balance):.1f}"
         else:
-            pl_bal = f"{7.0 - float(payroll.privilege_leave or 0):.1f}"
-            sl_bal = f"{7.0 - float(payroll.sick_leave     or 0):.1f}"
-            cl_bal = f"{7.0 - float(payroll.casual_leave   or 0):.1f}"
+            pl_bal = "0.0"
+            sl_bal = "0.0"
+            cl_bal = "0.0"
 
         def P(text, bold=False) -> Paragraph:
             return Paragraph(text, wrap_bold if bold else wrap_style)

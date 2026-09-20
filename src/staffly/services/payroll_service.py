@@ -1,5 +1,6 @@
 """Payroll service for payroll generation and management."""
 
+import math
 from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Optional
 from datetime import date
@@ -39,7 +40,7 @@ def get_financial_year(year: int, month: int) -> int:
 class PayrollService:
     """
     Service for payroll operations.
-    
+
     Handles:
     - Automatic payroll generation for a period
     - Copying data from previous month
@@ -55,30 +56,146 @@ class PayrollService:
         self.leave_repo = LeaveBalanceRepository(session)
         self.calc_service = CalculationService()
 
+    def _check_esic_buffer_rule(self, employee, payroll_period, current_structure) -> bool:
+        """
+        ESIC 6-Month Statutory Rule:
+        Contribution periods are Apr-Sep and Oct-Mar.
+        If ESIC was applicable at the start of the contribution period
+        (or at joining date if joined mid-period), it remains applicable
+        for the entire period even if salary crosses the threshold.
+        """
+        if current_structure and current_structure.esi_applicable:
+            return True
+
+        if 4 <= payroll_period.month <= 9:
+            period_start = date(payroll_period.year, 4, 1)
+        else:
+            year = payroll_period.year if payroll_period.month >= 10 else payroll_period.year - 1
+            period_start = date(year, 10, 1)
+
+        check_date = max(period_start, employee.date_of_joining)
+
+        if check_date >= payroll_period.start_date:
+            return current_structure.esi_applicable if current_structure else False
+
+        base_structure = self.salary_repo.get_active_for_employee(employee.id, check_date)
+        if base_structure and base_structure.esi_applicable:
+            return True
+
+        return current_structure.esi_applicable if current_structure else False
+
+    def _is_probation_active_for_period(self, employee, period: PayrollPeriod) -> bool:
+        """Check if probation applies for the entirety of this payroll period."""
+        if not getattr(employee, 'is_on_probation', False):
+            return False
+        if not employee.probation_end_date:
+            return True
+
+        doj = employee.date_of_joining
+        end_date = employee.probation_end_date
+
+        # If joined mid-month, probation pushes to the END of the end_date's month
+        if doj.day > 1:
+            if period.start_date.year < end_date.year:
+                return True
+            if period.start_date.year == end_date.year and period.start_date.month <= end_date.month:
+                return True
+            return False
+        else:
+            # Joined on the 1st, normal comparison
+            return period.start_date < end_date
+
+    def _calculate_leave_entitlements(self, employee, period: PayrollPeriod) -> dict:
+        """
+        Calculates dynamic leave entitlements.
+        Formula: (Remaining months in FY) * 21/12
+        Rounds .01-.49 to .5, and .51-.99 to +1.
+        Distributes extra in priority PL > SL > CL.
+        """
+        if self._is_probation_active_for_period(employee, period):
+            return {"PL": Decimal("0.0"), "SL": Decimal("0.0"), "CL": Decimal("0.0")}
+
+        doj = employee.date_of_joining
+        probation_end = employee.probation_end_date
+
+        # Determine the exact date they became a permanent employee
+        if getattr(employee, 'is_on_probation', False) and probation_end:
+            if doj.day > 1:
+                y, m = probation_end.year, probation_end.month
+                m += 1
+                if m > 12:
+                    m = 1
+                    y += 1
+                perm_start = date(y, m, 1)
+            else:
+                perm_start = probation_end
+        else:
+            if probation_end:
+                if doj.day > 1:
+                    y, m = probation_end.year, probation_end.month
+                    m += 1
+                    if m > 12:
+                        m = 1
+                        y += 1
+                    perm_start = date(y, m, 1)
+                else:
+                    perm_start = probation_end
+            else:
+                perm_start = doj
+
+        # If the period being processed is BEFORE they became permanent, no leaves
+        if period.start_date < perm_start:
+            return {"PL": Decimal("0.0"), "SL": Decimal("0.0"), "CL": Decimal("0.0")}
+
+        fy = get_financial_year(period.year, period.month)
+        fy_start = date(fy, 4, 1)
+        fy_end = date(fy + 1, 3, 31)
+
+        accrual_start = max(fy_start, perm_start)
+
+        months_remaining = 0
+        curr_y, curr_m = accrual_start.year, accrual_start.month
+        while (curr_y < fy_end.year) or (curr_y == fy_end.year and curr_m <= 3):
+            months_remaining += 1
+            curr_m += 1
+            if curr_m > 12:
+                curr_m = 1
+                curr_y += 1
+
+        raw_leaves = Decimal(months_remaining) * Decimal("21") / Decimal("12")
+
+        # Custom rounding rule
+        int_part = math.floor(raw_leaves)
+        frac_part = raw_leaves - Decimal(int_part)
+
+        if frac_part == 0:
+            total_leaves = Decimal(int_part)
+        elif frac_part < Decimal("0.50"):
+            total_leaves = Decimal(int_part) + Decimal("0.5")
+        else:
+            total_leaves = Decimal(int_part) + Decimal("1.0")
+
+        # Distribute equally in 0.5 increments, prioritizing PL > SL > CL
+        pl = sl = cl = Decimal("0.0")
+        rem = total_leaves
+        while rem >= Decimal("0.5"):
+            if pl <= sl and pl <= cl:
+                pl += Decimal("0.5")
+            elif sl <= cl:
+                sl += Decimal("0.5")
+            else:
+                cl += Decimal("0.5")
+            rem -= Decimal("0.5")
+
+        return {"PL": pl, "SL": sl, "CL": cl}
+
     def generate_payroll_for_period(
         self,
         payroll_period: PayrollPeriod,
         copy_from_previous: bool = True,
         company_id: int | None = None,
     ) -> int:
-        """
-        Automatically generate monthly payroll records for all eligible employees.
-        
-        Rules:
-        1. Only includes employees active on the period's start date
-        2. Skips employees who have left before the period
-        3. Copies attendance from previous month if exists
-        4. User can then edit attendance and recalculate
-        
-        Args:
-            payroll_period: The period to generate payroll for
-            copy_from_previous: Whether to copy attendance from previous month
-            company_id: Optional company scope for generation
-        
-        Returns:
-            Number of payroll records created
-        """
-        # Check if payroll already exists for this period
+        """Automatically generate monthly payroll records."""
         if company_id is not None and self.payroll_repo.exists_for_period_and_company(payroll_period.id, company_id):
             raise ValueError(
                 f"Payroll already exists for {payroll_period.period_label} ({company_id}). "
@@ -90,64 +207,64 @@ class PayrollService:
                 "Delete existing records first."
             )
 
-        # Get all employees active on period start date
         period_start = payroll_period.start_date
+        period_end = payroll_period.end_date
+
+        # Fetch active by END of month to catch mid-month joiners
         if company_id is not None:
-            active_employees = self.employee_repo.get_active_on_date_by_company(period_start, company_id)
+            active_employees = self.employee_repo.get_active_on_date_by_company(period_end, company_id)
         else:
-            active_employees = self.employee_repo.get_active_on_date(period_start)
+            active_employees = self.employee_repo.get_active_on_date(period_end)
 
         created_count = 0
 
         for employee in active_employees:
-            # Get active salary structure for this period
+            effective_date = max(period_start, employee.date_of_joining)
             salary_structure = self.salary_repo.get_active_for_employee(
-                employee.id, period_start
+                employee.id, effective_date
             )
 
             if not salary_structure:
-                # Skip employees without salary structure
                 print(f"Warning: No salary structure for {employee.full_name}, skipping")
                 continue
 
-            # Create base payroll record
             payroll = MonthlyPayroll(
                 employee_id=employee.id,
                 payroll_period_id=payroll_period.id,
             )
 
-            # Copy salary components from salary_structure (snapshot)
             payroll.basic_salary = _to_decimal(salary_structure.basic_salary)
             payroll.hra = _to_decimal(salary_structure.hra)
             payroll.bonus = _to_decimal(salary_structure.bonus)
             payroll.cca = _to_decimal(salary_structure.cca)
             payroll.other_allowance = _to_decimal(salary_structure.other_allowance)
 
-            # Copy attendance from previous month if requested
-            # NOTE: Do NOT copy leaves, absents, late marks, TDS, or loans.
-            # Only copy present_days and paid_days as defaults.
+            # Auto-subtract unworked days for mid-month joiners
+            unworked_days = 0
+            if employee.date_of_joining > period_start:
+                unworked_days = (employee.date_of_joining - period_start).days
+            base_working_days = max(0, payroll_period.working_days - unworked_days)
+
             if copy_from_previous:
                 prev_payroll = self.payroll_repo.get_previous_month_payroll(
                     employee.id, payroll_period.id
                 )
-                if prev_payroll:
-                    # Copy only paid/present days as starting defaults
-                    payroll.paid_days = payroll_period.working_days
-                    payroll.present_days = payroll_period.working_days
+                if prev_payroll and unworked_days == 0:
+                    payroll.paid_days = prev_payroll.paid_days
+                    payroll.present_days = prev_payroll.present_days
                 else:
-                    payroll.paid_days = payroll_period.working_days
-                    payroll.present_days = payroll_period.working_days
+                    payroll.paid_days = base_working_days
+                    payroll.present_days = base_working_days
             else:
-                payroll.paid_days = payroll_period.working_days
-                payroll.present_days = payroll_period.working_days
+                payroll.paid_days = base_working_days
+                payroll.present_days = base_working_days
 
-            # Leaves, absent, late marks, TDS, loans all start at 0 for new month
+            is_esi_applicable = self._check_esic_buffer_rule(employee, payroll_period, salary_structure)
 
-            # Calculate salary based on attendance
             self._calculate_payroll(
                 payroll,
                 salary_structure.pf_applicable,
-                salary_structure.esi_applicable,
+                is_esi_applicable,
                 _to_decimal(salary_structure.basic_salary),
                 _to_decimal(salary_structure.hra),
                 _to_decimal(salary_structure.bonus),
@@ -158,22 +275,17 @@ class PayrollService:
                 payroll_period.working_days,
             )
 
-            # Calculate arrears if salary structure changed this month
             payroll.arrears = self._calculate_arrears(
                 employee.id, payroll_period, salary_structure
             )
 
-            # Ensure leave balance record exists for this FY
             fy = get_financial_year(payroll_period.year, payroll_period.month)
             self.leave_repo.get_or_create_for_employee_fy(employee.id, fy)
 
-            # Save
             self.payroll_repo.create(payroll)
             created_count += 1
 
-        # Commit all at once
         self.session.commit()
-
         return created_count
 
     def generate_payroll_for_employee(
@@ -181,11 +293,7 @@ class PayrollService:
         employee_id: int,
         payroll_period: PayrollPeriod,
     ) -> MonthlyPayroll:
-        """
-        Generate a payroll record for a single employee in an existing period.
-
-        Raises ValueError if a record already exists for this employee/period.
-        """
+        """Generate a payroll record for a single employee in an existing period."""
         existing = self.payroll_repo.get_by_employee_and_period(employee_id, payroll_period.id)
         if existing:
             raise ValueError("Payroll record already exists for this employee in the selected period.")
@@ -194,9 +302,15 @@ class PayrollService:
         if not employee:
             raise ValueError(f"Employee {employee_id} not found.")
 
-        salary_structure = self.salary_repo.get_active_for_employee(employee.id, payroll_period.start_date)
+        effective_date = max(payroll_period.start_date, employee.date_of_joining)
+        salary_structure = self.salary_repo.get_active_for_employee(employee.id, effective_date)
         if not salary_structure:
             raise ValueError(f"No active salary structure found for {employee.full_name}.")
+
+        unworked_days = 0
+        if employee.date_of_joining > payroll_period.start_date:
+            unworked_days = (employee.date_of_joining - payroll_period.start_date).days
+        base_working_days = max(0, payroll_period.working_days - unworked_days)
 
         payroll = MonthlyPayroll(
             employee_id=employee.id,
@@ -207,13 +321,15 @@ class PayrollService:
         payroll.bonus = _to_decimal(salary_structure.bonus)
         payroll.cca = _to_decimal(salary_structure.cca)
         payroll.other_allowance = _to_decimal(salary_structure.other_allowance)
-        payroll.paid_days = payroll_period.working_days
-        payroll.present_days = payroll_period.working_days
+        payroll.paid_days = base_working_days
+        payroll.present_days = base_working_days
+
+        is_esi_applicable = self._check_esic_buffer_rule(employee, payroll_period, salary_structure)
 
         self._calculate_payroll(
             payroll,
             salary_structure.pf_applicable,
-            salary_structure.esi_applicable,
+            is_esi_applicable,
             _to_decimal(salary_structure.basic_salary),
             _to_decimal(salary_structure.hra),
             _to_decimal(salary_structure.bonus),
@@ -233,49 +349,52 @@ class PayrollService:
         return payroll
 
     def recalculate_payroll(self, payroll_id: int) -> MonthlyPayroll:
-        """
-        Recalculate payroll after user edits attendance.
-        
-        Args:
-            payroll_id: The payroll record to recalculate
-        
-        Returns:
-            Updated payroll record
-        """
+        """Recalculate payroll after user edits attendance."""
         payroll = self.payroll_repo.get_by_id(payroll_id)
         if not payroll:
             raise ValueError(f"Payroll record {payroll_id} not found")
 
-        # Get salary structure and employee to check PF applicability and gender
+        employee = self.employee_repo.get_by_id(payroll.employee_id)
+
+        # Fix for mid-month joiners: check effective date against DOJ
+        effective_date = payroll.payroll_period.start_date
+        if employee and employee.date_of_joining > effective_date:
+            effective_date = employee.date_of_joining
+
         salary_structure = self.salary_repo.get_active_for_employee(
             payroll.employee_id,
-            payroll.payroll_period.start_date
+            effective_date
         )
 
         if not salary_structure:
             raise ValueError(f"No salary structure found for employee")
 
-        # Get employee for gender
-        employee = self.employee_repo.get_by_id(payroll.employee_id)
+        # ---------------------------------------------------------
+        # LEAVE ROUTING (Zero-Leave Redirect OR Dynamic Entitlements)
+        # ---------------------------------------------------------
+        if employee:
+            self.apply_leave_hierarchy(payroll)
 
-        # Recalculate present_days and paid_days based on attendance values
         working_days = payroll.payroll_period.working_days
+        unworked_days = 0
+        if employee and employee.date_of_joining > payroll.payroll_period.start_date:
+            unworked_days = (employee.date_of_joining - payroll.payroll_period.start_date).days
+        base_working_days = max(0, working_days - unworked_days)
+
         absent = float(payroll.absent_days or 0)
         pl = float(payroll.privilege_leave or 0)
         sl = float(payroll.sick_leave or 0)
         cl = float(payroll.casual_leave or 0)
-        
-        # present_days = days actually worked (excluding leaves and absents)
-        payroll.present_days = int(working_days - absent - pl - sl - cl)
-        
-        # paid_days = present + leaves (only absents reduce payment)
-        payroll.paid_days = int(working_days - absent)
 
-        # Recalculate
+        payroll.present_days = int(base_working_days - absent - pl - sl - cl)
+        payroll.paid_days = int(base_working_days - absent)
+
+        is_esi_applicable = self._check_esic_buffer_rule(employee, payroll.payroll_period, salary_structure)
+
         self._calculate_payroll(
             payroll,
             salary_structure.pf_applicable,
-            salary_structure.esi_applicable,
+            is_esi_applicable,
             _to_decimal(salary_structure.basic_salary),
             _to_decimal(salary_structure.hra),
             _to_decimal(salary_structure.bonus),
@@ -286,7 +405,6 @@ class PayrollService:
             payroll.payroll_period.working_days,
         )
 
-        # Recalculate arrears (only non-zero in the month structure changed)
         payroll.arrears = self._calculate_arrears(
             payroll.employee_id, payroll.payroll_period, salary_structure
         )
@@ -308,13 +426,7 @@ class PayrollService:
         gender: str | None,
         working_days: int,
     ) -> None:
-        """
-        Internal method to calculate payroll values.
-        
-        Updates the payroll object in place.
-        ESI is auto-calculated based on gross salary.
-        Professional Tax is auto-calculated based on gender and gross.
-        """
+        """Internal method to calculate payroll values."""
         result = self.calc_service.calculate_complete_payroll(
             basic=basic_monthly,
             hra=hra_monthly,
@@ -332,7 +444,6 @@ class PayrollService:
             other_deductions=payroll.other_deductions,
         )
 
-        # Update payroll with calculated values
         payroll.basic_salary = result["basic_salary"]
         payroll.hra = result["hra"]
         payroll.bonus = result["bonus"]
@@ -354,28 +465,20 @@ class PayrollService:
         payroll_period: PayrollPeriod,
         current_structure,
     ) -> Decimal:
-        """
-        Calculate arrears when salary structure changed.
-
-        Arrears = (new bonus – old bonus) * months_in_fy_before_this_month
-        Only applies in the month the structure was created and only for the
-        bonus difference within the current financial year.
-        """
+        """Calculate arrears when salary structure changed."""
         period_start = payroll_period.start_date
         fy = get_financial_year(payroll_period.year, payroll_period.month)
 
-        # Only calculate if the structure became effective this month
         if not current_structure.effective_from:
             return Decimal("0.00")
         if (current_structure.effective_from.year != period_start.year or
                 current_structure.effective_from.month != period_start.month):
             return Decimal("0.00")
 
-        # Find the previous structure (the one just before this one)
         structures = self.salary_repo.get_by_employee_id(employee_id)
         prev_structure = None
         found_current = False
-        for s in structures:  # ordered by effective_from desc
+        for s in structures:
             if s.id == current_structure.id:
                 found_current = True
                 continue
@@ -405,8 +508,7 @@ class PayrollService:
         if diff <= Decimal("0.00"):
             return Decimal("0.00")
 
-        # Count months in this FY before the current month that had old structure
-        fy_start_month = 4  # April
+        fy_start_month = 4
         fy_start_year = fy
         months_count = 0
         y, m = fy_start_year, fy_start_month
@@ -424,20 +526,26 @@ class PayrollService:
         return arrears.quantize(Decimal("0.01"))
 
     def apply_leave_hierarchy(self, payroll: MonthlyPayroll) -> None:
-        """
-        Redistribute monthly leaves following the hierarchy PL > CL > SL → Absent.
+        """Redistribute monthly leaves following the hierarchy PL > CL > SL → Absent."""
+        if self._is_probation_active_for_period(payroll.employee, payroll.payroll_period):
+            # Redirect any typed leaves directly into absent
+            total_typed = Decimal(str(payroll.privilege_leave or 0)) + Decimal(str(payroll.casual_leave or 0)) + Decimal(str(payroll.sick_leave or 0))
+            if total_typed > 0:
+                payroll.absent_days = float(Decimal(str(payroll.absent_days or 0)) + total_typed)
+            payroll.privilege_leave = 0.0
+            payroll.casual_leave = 0.0
+            payroll.sick_leave = 0.0
+            return
 
-        When the FY cumulative total for a leave type exceeds its 7-day entitlement,
-        the overflow is cascaded to the next type in the hierarchy:
-          PL overflow → CL → SL → Absent (unpaid)
+        # Fetch dynamic leave limits
+        entitlements = self._calculate_leave_entitlements(payroll.employee, payroll.payroll_period)
+        ent_pl = entitlements["PL"]
+        ent_sl = entitlements["SL"]
+        ent_cl = entitlements["CL"]
 
-        This is called after the user edits leave values, before recalculation.
-        """
         period = payroll.payroll_period
         fy = get_financial_year(period.year, period.month)
-        ENTITLEMENT = Decimal("7.0")
 
-        # FY totals from *other* months (exclude the record being edited)
         other_payrolls = (
             self.session.query(MonthlyPayroll)
             .join(PayrollPeriod)
@@ -463,26 +571,21 @@ class PayrollService:
         cur_absent = Decimal(str(payroll.absent_days or 0))
 
         def _absorb(overflow: Decimal, source: str) -> Decimal:
-            """
-            Route overflow into other leave types in priority order PL > CL > SL,
-            skipping the source type. Remaining unabsorbed days go to Absent.
-            Returns the amount that could not be absorbed (to add to Absent).
-            """
             nonlocal cur_pl, cur_cl, cur_sl
             remaining = overflow
             for leave_type in ("PL", "CL", "SL"):
                 if leave_type == source or remaining <= 0:
                     continue
                 if leave_type == "PL":
-                    space = max(Decimal("0"), ENTITLEMENT - fy_pl_before - cur_pl)
+                    space = max(Decimal("0"), ent_pl - fy_pl_before - cur_pl)
                     absorbed = min(remaining, space)
                     cur_pl += absorbed
                 elif leave_type == "CL":
-                    space = max(Decimal("0"), ENTITLEMENT - fy_cl_before - cur_cl)
+                    space = max(Decimal("0"), ent_cl - fy_cl_before - cur_cl)
                     absorbed = min(remaining, space)
                     cur_cl += absorbed
                 else:  # SL
-                    space = max(Decimal("0"), ENTITLEMENT - fy_sl_before - cur_sl)
+                    space = max(Decimal("0"), ent_sl - fy_sl_before - cur_sl)
                     absorbed = min(remaining, space)
                     cur_sl += absorbed
                 remaining -= absorbed
@@ -490,23 +593,23 @@ class PayrollService:
 
         # PL overflow → CL → SL → Absent
         pl_total = fy_pl_before + cur_pl
-        if pl_total > ENTITLEMENT:
-            overflow = pl_total - ENTITLEMENT
-            cur_pl = max(Decimal("0"), ENTITLEMENT - fy_pl_before)
+        if pl_total > ent_pl:
+            overflow = pl_total - ent_pl
+            cur_pl = max(Decimal("0"), ent_pl - fy_pl_before)
             cur_absent += _absorb(overflow, "PL")
 
         # CL overflow → PL → SL → Absent
         cl_total = fy_cl_before + cur_cl
-        if cl_total > ENTITLEMENT:
-            overflow = cl_total - ENTITLEMENT
-            cur_cl = max(Decimal("0"), ENTITLEMENT - fy_cl_before)
+        if cl_total > ent_cl:
+            overflow = cl_total - ent_cl
+            cur_cl = max(Decimal("0"), ent_cl - fy_cl_before)
             cur_absent += _absorb(overflow, "CL")
 
         # SL overflow → PL → CL → Absent
         sl_total = fy_sl_before + cur_sl
-        if sl_total > ENTITLEMENT:
-            overflow = sl_total - ENTITLEMENT
-            cur_sl = max(Decimal("0"), ENTITLEMENT - fy_sl_before)
+        if sl_total > ent_sl:
+            overflow = sl_total - ent_sl
+            cur_sl = max(Decimal("0"), ent_sl - fy_sl_before)
             cur_absent += _absorb(overflow, "SL")
 
         payroll.privilege_leave = float(cur_pl.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
@@ -515,10 +618,7 @@ class PayrollService:
         payroll.absent_days = float(cur_absent.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
     def update_leave_balances(self, payroll_period: PayrollPeriod, company_id: int | None = None) -> None:
-        """
-        Recalculate leave balances for all employees for the financial year
-        of the given payroll period.
-        """
+        """Recalculate leave balances for all employees for the financial year."""
         fy = get_financial_year(payroll_period.year, payroll_period.month)
         if company_id is not None:
             employees = self.employee_repo.get_active_by_company(company_id)
@@ -526,12 +626,16 @@ class PayrollService:
             employees = self.employee_repo.get_all_active()
 
         for emp in employees:
-            self.leave_repo.recalculate_from_payroll(emp.id, fy, self.session)
+            bal = self.leave_repo.recalculate_from_payroll(emp.id, fy, self.session)
+
+            # Update the database entitlements to match the dynamic calculation
+            entitlements = self._calculate_leave_entitlements(emp, payroll_period)
+            bal.pl_entitlement = entitlements["PL"]
+            bal.sl_entitlement = entitlements["SL"]
+            bal.cl_entitlement = entitlements["CL"]
 
     def finalize_period(self, payroll_period_id: int, company_id: int) -> bool:
-        """
-        Finalize is currently disabled while lock feature is turned off.
-        """
+        """Finalize is currently disabled while lock feature is turned off."""
         _ = payroll_period_id
         _ = company_id
         return True
